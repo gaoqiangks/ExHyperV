@@ -98,6 +98,7 @@ namespace ExHyperV.Tools
             else _pending = settings;
         }
 
+        public void SendGuestEnter() => _ax.SendGuestEnter();
         public void Disconnect() => _ax.DisconnectSafe();
 
         /// <summary>

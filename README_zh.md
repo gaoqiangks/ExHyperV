@@ -889,3 +889,7 @@ ARM 没有 Ring 环，用的是异常级别（Exception Levels）：
 ![](https://img.shields.io/badge/初心-User--e9738-0078D4?style=flat-square&logo=hyperledger&logoColor=white)
 ![](https://img.shields.io/badge/初心-User--1ab90-0078D4?style=flat-square&logo=hyperledger&logoColor=white)
 ![](https://img.shields.io/badge/初心-EFP001-0078D4?style=flat-square&logo=hyperledger&logoColor=white)
+
+## 本 fork：自动连接与无密码登录
+
+支持选择自动连接的虚拟机、连接后的窗口状态，以及连接后关闭管理主窗口。可选无密码登录 / 重连解锁，详见 [功能与配置说明](doc/auto-connect.md)。

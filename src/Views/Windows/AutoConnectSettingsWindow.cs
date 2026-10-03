@@ -1,0 +1,38 @@
+using System.Windows;
+using System.Windows.Controls;
+using ExHyperV.Services;
+using CheckBox = System.Windows.Controls.CheckBox;
+
+using ComboBox = System.Windows.Controls.ComboBox;
+using Button = System.Windows.Controls.Button;
+namespace ExHyperV.Views;
+internal sealed class AutoConnectSettingsWindow : Window
+{
+    public AutoConnectSettingsWindow()
+    {
+        Title = "虚拟机自动连接与无密码登录"; Width = 560; Height = 500;
+        Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32,32,32));
+        Foreground = System.Windows.Media.Brushes.White;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner; ResizeMode = ResizeMode.NoResize;
+        var o = AutoConnectOptions.Load();
+        var panel = new StackPanel { Margin = new Thickness(22) };
+        var enabled = new CheckBox { Content = "启动 ExHyperV 时自动连接虚拟机", IsChecked = o.Enabled, Margin = new Thickness(0,0,0,12) };
+        panel.Children.Add(enabled);
+        panel.Children.Add(new TextBlock { Text = "虚拟机名称" });
+        var name = new TextBox { Text = o.VmName, Margin = new Thickness(0,4,0,12) }; panel.Children.Add(name);
+        panel.Children.Add(new TextBlock { Text = "连接后的窗口状态" });
+        var mode = new ComboBox { Margin = new Thickness(0,4,0,12) };
+        var values = new[] { "Normal", "Maximized", "Minimized", "FullScreen" };
+        foreach (var label in new[] { "普通窗口", "最大化窗口", "最小化", "全屏" }) mode.Items.Add(label);
+        mode.SelectedIndex = Math.Max(0, Array.IndexOf(values, o.WindowMode)); panel.Children.Add(mode);
+        var close = new CheckBox { Content = "连接成功后关闭管理主窗口", IsChecked = o.CloseMainAfterConnect, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(close);
+        var login = new CheckBox { Content = "连接后自动登录 / 解锁无密码账户", IsChecked = o.PasswordlessAutoLogin, Margin = new Thickness(0,0,0,8) }; panel.Children.Add(login);
+        panel.Children.Add(new TextBlock { Text = "仅适用于当前选中的无密码 Windows 账户。\n连接后发送至多两次 Enter；有密码时仍需手动登录。\n不修改来宾系统的账户或安全策略。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
+        var save = new Button { Content = "保存", Width = 100, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        save.Click += (_, _) => {
+            try { o.Enabled = enabled.IsChecked == true; o.VmName = name.Text.Trim(); o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
+            catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "保存失败"); }
+        };
+        panel.Children.Add(save); Content = panel;
+    }
+}

@@ -53,6 +53,7 @@ namespace ExHyperV.Views
             _vm = new ConsoleViewModel(vmId, vmName);
             this.DataContext = _vm;
             InitializeComponent();
+            ExHyperV.Services.PasswordlessLogin.Attach(this, RdpHost, vmName);
             if (App.PerformanceMode)
             {
                 WindowBackdropType = WindowBackdropType.None;
@@ -297,6 +298,17 @@ namespace ExHyperV.Views
         }
 
         // ── 全屏 / 窗口尺寸 ─────────────────────────────────────────────────
+        public void ApplyStartupWindowMode(string mode)
+        {
+            _vm.IsFullScreen = mode == "FullScreen";
+            if (mode != "FullScreen") WindowState = mode switch
+            {
+                "Maximized" => WindowState.Maximized,
+                "Minimized" => WindowState.Minimized,
+                _ => WindowState.Normal
+            };
+            ExHyperV.Services.AutoConnectLog.Write($"Window state verified: {WindowState}; full-screen={_vm.IsFullScreen}");
+        }
         private void EnterFullScreen()
         {
             _isFullScreen = true;

@@ -212,6 +212,18 @@ namespace ExHyperV.Tools
             catch (Exception ex) { Debug.WriteLine("[Rdp] SetZoomLevel 失败: " + ex.Message); }
         }
 
+        public void SendGuestEnter()
+        {
+            if (ConnectionState != 1) throw new InvalidOperationException("RDP is not connected.");
+            var client = (IMsRdpClientNonScriptable)GetOcx();
+            bool up = false;
+            int data = 0x1C; // RDP scan code for Enter; key-up is carried separately.
+            client.SendKeys(1, ref up, ref data);
+            up = true;
+            data = 0x1C;
+            client.SendKeys(1, ref up, ref data);
+        }
+
         private void TrySet(string what, Action set)
         {
             try { set(); }
