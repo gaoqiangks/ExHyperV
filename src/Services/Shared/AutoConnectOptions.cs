@@ -4,6 +4,9 @@ namespace ExHyperV.Services;
 internal sealed class AutoConnectOptions
 {
     public bool Enabled { get; set; }
+    public bool OpenMainWhenConnected { get; set; } = true;
+    public bool PreferEnhancedSession { get; set; } = true;
+    public bool DefaultVmManagementPage { get; set; } = true;
     public string VmName { get; set; } = "";
     public string WindowMode { get; set; } = "Maximized";
     public bool CloseMainAfterConnect { get; set; } = true;

@@ -38,6 +38,24 @@ internal static class AutoConnectStartup
         return null;
     }
 
+    private static bool HasExistingConsole()
+    {
+        foreach (var process in Process.GetProcessesByName("ExHyperV"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.Id == Environment.ProcessId || process.MainWindowHandle == IntPtr.Zero) continue;
+                    string title = process.MainWindowTitle;
+                    if (string.IsNullOrWhiteSpace(title) || title.StartsWith("ExHyperV", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Query(title) != null) return true;
+                }
+                catch (Exception ex) { Log("Existing window check failed: " + ex.Message); }
+            }
+        }
+        return false;
+    }
     internal static async Task RunAsync(MainWindow owner)
     {
         var args = Environment.GetCommandLineArgs();
@@ -55,9 +73,24 @@ internal static class AutoConnectStartup
         string logDirectory = Path.GetDirectoryName(AutoConnectLog.FilePath)!;
         Directory.CreateDirectory(logDirectory);
         logFile = Path.Combine(logDirectory, "autoconnect.log");
+        if (options.OpenMainWhenConnected && HasExistingConsole())
+        {
+            Log("Existing VM console; opening management window.");
+            owner.WindowState = WindowState.Normal;
+            owner.Activate();
+            return;
+        }
         string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name)));
         instanceMutex = new Mutex(true, @"Local\ExHyperV-AutoConnect-" + key, out bool acquired);
-        if (!acquired) { Log("Already running; duplicate launch ignored."); owner.Close(); return; }
+        if (!acquired)
+        {
+            instanceMutex.Dispose();
+            instanceMutex = null;
+            Log("Existing auto-connect instance; opening management window.");
+            if (options.OpenMainWhenConnected) { owner.WindowState = WindowState.Normal; owner.Activate(); }
+            else owner.Close();
+            return;
+        }
         Log($"Starting auto-connect: {name}; local auto-connect extension.");
         owner.Title = $"ExHyperV — 正在等待 {name} 启动";
         owner.WindowState = WindowState.Minimized;

@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using ExHyperV.Services;
 using ExHyperV.Views;
 using Wpf.Ui.Controls;
@@ -36,7 +36,7 @@ namespace ExHyperV.Views
                 RootNavigation.Navigate(typeof(VirtualMachinesPage));
                 RootNavigation.Navigate(typeof(USBPage));
             }
-            RootNavigation.Navigate(typeof(MainPage));
+            RootNavigation.Navigate(AutoConnectOptions.Load().DefaultVmManagementPage ? typeof(VirtualMachinesPage) : typeof(MainPage));
 
             //预加载/首帧后再挂系统主题监听(跟随模式),与 #146 的 Loaded 渲染竞争错开
             Dispatcher.BeginInvoke(

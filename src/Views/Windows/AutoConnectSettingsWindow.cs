@@ -10,7 +10,7 @@ internal sealed class AutoConnectSettingsWindow : Window
 {
     public AutoConnectSettingsWindow()
     {
-        Title = "虚拟机自动连接与无密码登录"; Width = 560; Height = 500;
+        Title = "虚拟机自动连接与无密码登录"; Width = 560; Height = 650;
         Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32,32,32));
         Foreground = System.Windows.Media.Brushes.White;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ResizeMode = ResizeMode.NoResize;
@@ -18,6 +18,9 @@ internal sealed class AutoConnectSettingsWindow : Window
         var panel = new StackPanel { Margin = new Thickness(22) };
         var enabled = new CheckBox { Content = "启动 ExHyperV 时自动连接虚拟机", IsChecked = o.Enabled, Margin = new Thickness(0,0,0,12) };
         panel.Children.Add(enabled);
+        var existing = new CheckBox { Content = "已有虚拟机连接时，再次启动打开管理主界面", IsChecked = o.OpenMainWhenConnected, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(existing);
+        var vmPage = new CheckBox { Content = "主界面默认打开虚拟机管理", IsChecked = o.DefaultVmManagementPage, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(vmPage);
+        var enhanced = new CheckBox { Content = "每次连接优先使用增强会话", IsChecked = o.PreferEnhancedSession, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(enhanced);
         panel.Children.Add(new TextBlock { Text = "虚拟机名称" });
         var name = new TextBox { Text = o.VmName, Margin = new Thickness(0,4,0,12) }; panel.Children.Add(name);
         panel.Children.Add(new TextBlock { Text = "连接后的窗口状态" });
@@ -30,7 +33,7 @@ internal sealed class AutoConnectSettingsWindow : Window
         panel.Children.Add(new TextBlock { Text = "仅适用于当前选中的无密码 Windows 账户。\n连接后发送至多两次 Enter；有密码时仍需手动登录。\n不修改来宾系统的账户或安全策略。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
         var save = new Button { Content = "保存", Width = 100, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         save.Click += (_, _) => {
-            try { o.Enabled = enabled.IsChecked == true; o.VmName = name.Text.Trim(); o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
+            try { o.DefaultVmManagementPage = vmPage.IsChecked == true; o.OpenMainWhenConnected = existing.IsChecked == true; o.PreferEnhancedSession = enhanced.IsChecked == true; o.Enabled = enabled.IsChecked == true; o.VmName = name.Text.Trim(); o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
             catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "保存失败"); }
         };
         panel.Children.Add(save); Content = panel;
