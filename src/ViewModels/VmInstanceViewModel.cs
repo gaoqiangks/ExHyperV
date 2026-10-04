@@ -17,6 +17,25 @@ namespace ExHyperV.ViewModels
 
         public VmInstance Model { get; }
 
+        public bool AutoConnectOnStartup
+        {
+            get => AutoConnectOptions.Load().IsEnabled(Id, Name);
+            set
+            {
+                try
+                {
+                    var options = AutoConnectOptions.Load();
+                    options.SetEnabled(Id, Name, value);
+                    options.Save();
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show("无法保存自动连接设置：" + ex.Message, "ExHyperV");
+                }
+                OnPropertyChanged();
+            }
+        }
+
 
 
         [ObservableProperty] private bool _isEditing;

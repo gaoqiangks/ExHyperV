@@ -49,7 +49,7 @@ namespace ExHyperV.ViewModels
             if (savedZoom == ZoomAutoToken) SelectedZoom = Properties.Resources.ConsoleWindow_ZoomAuto;
             else if (!string.IsNullOrEmpty(savedZoom) && ZoomOptions.Contains(savedZoom)) SelectedZoom = savedZoom;
             // 使用保存的分辨率直接建立增强会话；无保存值时先由基本会话取得分辨率。
-            _preferEnhanced = AutoConnectOptions.Load().PreferEnhancedSession || SettingsService.GetDefaultConnectionMode() == ModeEnhancedToken;
+            _preferEnhanced = EnhancedSessionCredentials.IsConfigured(vmName) || AutoConnectOptions.Load().PreferEnhancedSession || SettingsService.GetDefaultConnectionMode() == ModeEnhancedToken;
             var savedResolution = SettingsService.GetDefaultConsoleResolution();
             InitialEnhancedWidth = savedResolution?.Width ?? DefaultEnhancedWidth;
             InitialEnhancedHeight = savedResolution?.Height ?? DefaultEnhancedHeight;

@@ -53,6 +53,8 @@ namespace ExHyperV.Views
             _vm = new ConsoleViewModel(vmId, vmName);
             this.DataContext = _vm;
             InitializeComponent();
+            var connectionPresence = ConnectionPresence.Register();
+            Closed += (_, _) => connectionPresence.Dispose();
             ExHyperV.Services.PasswordlessLogin.Attach(this, RdpHost, vmName);
             if (App.PerformanceMode)
             {
@@ -115,6 +117,11 @@ namespace ExHyperV.Views
                 if (_enhancedConnecting)   // 增强会话没连上就断 → 回退基本会话（并把顶部开关切回）
                 {
                     _enhancedConnecting = false;
+                    if (EnhancedSessionCredentials.IsConfigured(_vm.VmName))
+                    {
+                        AutoConnectLog.Write("Guest enhanced session unavailable; waiting for guest readiness: " + _vm.VmName);
+                        return;
+                    }
                     _vm.FallbackToBasicSession();   // 触发 IsEnhancedMode 变化 → SyncConnection 以基本会话重连
                     return;
                 }
@@ -277,7 +284,7 @@ namespace ExHyperV.Views
         private static RdpConnectionSettings BuildHyperVSettings(string vmId, string vmName, bool enhanced, int reuseWidth, int reuseHeight, uint desktopScale)
         {
             var id = (vmId ?? string.Empty).Trim().ToUpperInvariant();
-            return new RdpConnectionSettings
+            var settings = new RdpConnectionSettings
             {
                 Server = "localhost",
                 ConnectionBarText = vmName,
@@ -295,6 +302,8 @@ namespace ExHyperV.Views
                 DeviceScaleFactor = 100,
                 PreConnectionBlob = enhanced ? $"{id};EnhancedMode=1" : id,
             };
+            if (enhanced) ExHyperV.Services.EnhancedSessionCredentials.Apply(settings, id, vmName);
+            return settings;
         }
 
         // ── 全屏 / 窗口尺寸 ─────────────────────────────────────────────────

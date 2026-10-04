@@ -7,6 +7,9 @@ namespace ExHyperV.Tools
     /// </summary>
     public sealed class RdpConnectionSettings
     {
+        public string? GuestVmId { get; set; }
+        public string? GuestUsername { get; set; }
+        public string? GuestPassword { get; set; }
         public string Server { get; set; } = "127.0.0.1";
         public int Port { get; set; } = 3389;
 

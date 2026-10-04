@@ -25,6 +25,12 @@ namespace ExHyperV.Views
             SettingsService.ApplySavedTheme();
         }
 
+        internal void ShowStartupPage()
+        {
+            RootNavigation.Navigate(AutoConnectOptions.Load().DefaultVmManagementPage ? typeof(VirtualMachinesPage) : typeof(MainPage));
+            Activate();
+        }
+
         private void PagePreload(object sender, RoutedEventArgs e)
         {
             // 性能模式：不预加载其它页面（省启动内存），只落地首页；其余首次进入时才建

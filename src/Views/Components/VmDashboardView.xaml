@@ -27,6 +27,14 @@
 
     <ScrollViewer Padding="24,0,24,24" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
         <StackPanel>
+            <ui:Card Margin="0,0,0,8" Padding="20,16">
+                <StackPanel>
+                    <CheckBox Content="启动 ExHyperV 时自动连接该虚拟机"
+                              IsChecked="{Binding SelectedVm.AutoConnectOnStartup, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="修改后立即保存，下次启动生效。已有连接窗口时，再次启动会打开管理界面。"
+                               TextWrapping="Wrap" FontSize="12" Opacity="0.65" Margin="0,8,0,0"/>
+                </StackPanel>
+            </ui:Card>
             
             <ui:CardExpander Margin="0,0,0,8" IsExpanded="False">
                 <ui:CardExpander.Header>

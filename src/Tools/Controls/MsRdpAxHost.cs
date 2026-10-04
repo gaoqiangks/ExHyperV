@@ -14,6 +14,7 @@ namespace ExHyperV.Tools
     internal sealed class MsRdpAxHost : AxHost
     {
         private const string MsRdpClient9Clsid = "8b918b82-7985-4c24-89df-c33ad2bbfbcd";
+        private HvSocketRdpBridge? guestBridge;
         private bool _smartSizing;   // 当前 SmartSizing 状态缓存（SetSmartSizing 用，避免重复设值闪烁）
         private uint _zoomLevel;     // 当前 ZoomLevel% 缓存（SetZoomLevel 用，基本会话每次布局都会调，仅比例真变时才穿透 OCX）
 
@@ -38,7 +39,7 @@ namespace ExHyperV.Tools
                 // COM 事件通过 Safe() 隔离异常，避免异常返回 native 后触发 0xC000041D。
                 evt.OnConnected += () => Safe(() => Connected?.Invoke());
                 evt.OnLoginComplete += () => Safe(() => LoginCompleted?.Invoke());
-                evt.OnDisconnected += reason => Safe(() => Disconnected?.Invoke(reason));
+                evt.OnDisconnected += reason => Safe(() => { guestBridge?.Dispose(); guestBridge = null; Disconnected?.Invoke(reason); });
                 evt.OnRemoteDesktopSizeChange += (w, h) => Safe(() => RemoteDesktopSizeChanged?.Invoke(w, h));
                 // 容器处理全屏：热键/请求经 OnRequestGo/LeaveFullScreen（非 OnEnter/Leave，那是控件自身全屏才触发）
                 evt.OnRequestGoFullScreen += () => Safe(() => EnteredFullScreen?.Invoke());
@@ -58,8 +59,27 @@ namespace ExHyperV.Tools
         {
             try
             {
+                guestBridge?.Dispose();
+                guestBridge = null;
+                if (s.GuestVmId != null)
+                {
+                    guestBridge = new HvSocketRdpBridge(s.GuestVmId);
+                    s.Server = "127.0.0.1";
+                    s.Port = guestBridge.Port;
+                    s.NetworkLevelAuthentication = false;
+                    s.NegotiateSecurityLayer = false;
+                    s.AuthenticationServiceClass = null;
+                    s.DisableCredentialsDelegation = false;
+                    s.PreConnectionBlob = null;
+                    // Linux applies its own Cinnamon monitor scale. Keep the RDP
+                    // framebuffer native so client DPI does not magnify it twice.
+                    s.DesktopScaleFactor = 100;
+                }
                 dynamic rdp = GetOcx();
                 rdp.Server = s.Server;
+                // xrdp's GFX pipeline requires 32-bit color; the ActiveX default
+                // silently falls back to slower bitmap drawing on Linux guests.
+                if (s.GuestVmId != null) rdp.ColorDepth = 32;
 
                 // UI 父窗口句柄：控件弹出的子窗口需要有效父窗口，否则在框架回调里抛异常逃回 native → 0xC000041D。
                 // COMReference(tlbimp) 把它生成成 set_UIParentWindowHandle(ref _RemotableHandle/wireHWND)，需手填：
@@ -115,7 +135,9 @@ namespace ExHyperV.Tools
                 // （装得下原生清晰、超出才缩放铺满）。控件宽高比始终=画面宽高比，故缩放无 #CBCBCB 信箱、鼠标映射准。
                 TrySet("SmartSizing", () => adv.SmartSizing = false);
                 _smartSizing = false;
-                TrySet("EnableAutoReconnect", () => adv.EnableAutoReconnect = true);
+                // The guest bridge accepts one connection. The VM polling loop must
+                // create a new bridge after a reboot, rather than reuse a dead port.
+                TrySet("EnableAutoReconnect", () => adv.EnableAutoReconnect = s.GuestVmId == null);
                 // VMBus 无真实网络：关掉带宽/网络探测，避免连接栏"网络信息"弹窗取退化数据而原生崩溃。
                 TrySet("BandwidthDetection", () => adv.BandwidthDetection = false);
                 // 连接超时调短：localhost VMBus 正常连接 <1s，调短让连不上的会话(如不支持增强)快速放弃 → 快速回退。
@@ -135,22 +157,51 @@ namespace ExHyperV.Tools
                 if (s.DesktopWidth > 0 && s.DesktopHeight > 0)
                     TrySet("Desktop", () => { rdp.DesktopWidth = s.DesktopWidth; rdp.DesktopHeight = s.DesktopHeight; });
 
+                if (!string.IsNullOrEmpty(s.GuestUsername) && s.GuestPassword != null)
+                {
+                    rdp.UserName = s.GuestUsername;
+                    rdp.Domain = string.Empty;
+                    ((IMsTscNonScriptable)GetOcx()).ClearTextPassword = s.GuestPassword;
+                    s.GuestPassword = null;
+                }
+                else
+                {
+                    // Never carry a Linux guest identity into localhost VMMS NLA.
+                    rdp.UserName = string.Empty;
+                    rdp.Domain = string.Empty;
+                    ((IMsTscNonScriptable)GetOcx()).ClearTextPassword = string.Empty;
+                }
                 rdp.Connect();
             }
             catch (Exception ex)
             {
+                guestBridge?.Dispose();
+                guestBridge = null;
+                ExHyperV.Services.AutoConnectLog.Write("RDP connection failed: " + ex.GetType().Name);
                 Debug.WriteLine("[Rdp] ApplyAndConnect 异常: " + ex);
             }
         }
 
         public void DisconnectSafe()
         {
+            guestBridge?.Dispose();
+            guestBridge = null;
             try
             {
                 dynamic rdp = GetOcx();
                 if ((int)rdp.Connected != 0) rdp.Disconnect();
             }
             catch { /* 未连接 / OCX 未就绪 */ }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                guestBridge?.Dispose();
+                guestBridge = null;
+            }
+            base.Dispose(disposing);
         }
 
         /// <summary>0=未连接 1=已连接 2=连接中（mstscax 的 Connected 取值）。</summary>
@@ -186,7 +237,7 @@ namespace ExHyperV.Tools
                 // deviceScaleFactor=100。末位传 1 是非法值(合法仅 100/140/180)，会让分辨率协商被拒 → 画面不随分辨率刷新+灰信箱。
                 // 使用承载窗口提供的 DPI，避免 AxHost.DeviceDpi 在首次连接时仍为旧值。
                 uint dpi = (uint)Math.Max(96, Math.Round(96.0 * dpiScale));
-                uint desktopScaleFactor = (uint)Math.Round(dpi / 96.0 * 100.0);
+                uint desktopScaleFactor = guestBridge != null ? 100u : (uint)Math.Round(dpi / 96.0 * 100.0);
                 uint physW = (uint)Math.Round(width * 25.4 / dpi);
                 uint physH = (uint)Math.Round(height * 25.4 / dpi);
                 rdp.UpdateSessionDisplaySettings((uint)width, (uint)height, physW, physH, 0u, desktopScaleFactor, 100u);

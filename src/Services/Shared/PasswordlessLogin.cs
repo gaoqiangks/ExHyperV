@@ -13,6 +13,7 @@ internal static class PasswordlessLogin
         window.Closed += (_, _) => attempt?.Cancel();
         host.Connected += () => window.Dispatcher.InvokeAsync(async () =>
         {
+            if (EnhancedSessionCredentials.IsConfigured(vmName)) return;
             var options = AutoConnectOptions.Load();
             if (!options.PasswordlessAutoLogin || !string.Equals(options.VmName, vmName, StringComparison.OrdinalIgnoreCase)) return;
             attempt?.Cancel();
