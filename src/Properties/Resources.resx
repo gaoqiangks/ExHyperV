@@ -305,7 +305,7 @@ Do you want to shut down the virtual machine and expand its MMIO space to 64GB?<
     <value>MMIO space is sufficient.</value>
   </data>
   <data name="Error_GetNetworkInfoFailed" xml:space="preserve">
-    <value>Failed to get network information. Please ensure the program is run with administrator privileges and the Hyper-V module is installed.</value>
+    <value>Failed to get network information: {0}</value>
   </data>
   <data name="DisplayName_HostManagementOS" xml:space="preserve">
     <value>Host</value>
@@ -3990,4 +3990,7 @@ Remove them from storage and retry? Cancel to re-plug the device and try again.<
   <data name="Network_UpstreamMissing" xml:space="preserve"><value>The selected network adapter is no longer available. Refresh and select it again.</value></data>
   <data name="Network_Restored" xml:space="preserve"><value>Configuration failed: {0}. The previous configuration was restored.</value></data>
   <data name="Network_RestoreFailed" xml:space="preserve"><value>Configuration failed: {0}. Recovery also failed: {1}. The network may be partially configured; check its current state.</value></data>
+  <data name="Network_SystemManagedPorts" xml:space="preserve">
+    <value>System-managed ports have no allocation settings. Connection information is incomplete; this switch cannot be modified here.</value>
+  </data>
 </root>

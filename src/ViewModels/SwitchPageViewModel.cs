@@ -118,17 +118,16 @@ namespace ExHyperV.ViewModels
         private async Task CoreRefreshLogicAsync()
         {
             ErrorMessage = null;
-            // 退订旧 SwitchViewModel 的事件再清空，避免被丢弃的实例仍响应 PropertyChanged 触发误配置
-            foreach (var oldVm in Switches)
-                oldVm.PropertyChanged -= OnSwitchViewModelPropertyChanged;
-            Switches.Clear();
-
             try
             {
                 var (switches, adapters) = await HyperVSwitchService.GetNetworkInfoAsync();
+                // Preserve the last good list if a background refresh fails.
+                foreach (var oldVm in Switches)
+                    oldVm.PropertyChanged -= OnSwitchViewModelPropertyChanged;
+                Switches.Clear();
                 _rawSwitchInfos = switches;
                 _physicalAdapters = adapters;
-                _bridgeableAdapters = await HyperVSwitchService.GetBridgeableAdaptersAsync();
+                _bridgeableAdapters = adapters.Where(a => !string.IsNullOrEmpty(a.ExternalPortPath)).ToList();
 
                 if (!_rawSwitchInfos.Any())
                 {
@@ -148,7 +147,9 @@ namespace ExHyperV.ViewModels
             catch (Exception ex)
             {
                 ErrorMessage = string.Format(Properties.Resources.Error_LoadNetworkInfoFailed, ex.Message);
-                await Dialogs.ShowAlertAsync(Properties.Resources.Error_Title, ErrorMessage);
+                // This also runs during page preloading: report in the page, not
+                // in a modal dialog that interrupts an unrelated VM connection.
+                AutoConnectLog.Write($"Network page refresh failed: {ex}");
             }
         }
 

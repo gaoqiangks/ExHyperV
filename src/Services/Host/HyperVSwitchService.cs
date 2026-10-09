@@ -165,7 +165,8 @@ namespace ExHyperV.Services
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error in GetNetworkInfoAsync: {ex}");
-                throw new InvalidOperationException(Properties.Resources.Error_GetNetworkInfoFailed, ex);
+                AutoConnectLog.Write($"Network information load failed: {ex}");
+                throw new InvalidOperationException(string.Format(Properties.Resources.Error_GetNetworkInfoFailed, ex.Message), ex);
             }
         }
 
@@ -209,7 +210,7 @@ namespace ExHyperV.Services
             if (!switchObjects.Success || switchObjects.Data == null)
             {
                 Debug.WriteLine($"[NetworkService] GetSwitchList WMI error: {switchObjects.Error}");
-                return new List<SwitchInfo>();
+                throw new InvalidOperationException(switchObjects.Error);
             }
 
             var tasks = switchObjects.Data.Select(async switchObj =>
@@ -242,7 +243,8 @@ namespace ExHyperV.Services
             bool hasInternal = false;
             Guid externalAdapterId = Guid.Empty;
 
-            var ports = await GetPortAllocationsAsync(switchObj);
+            var snapshot = await GetPortAllocationSnapshotAsync(switchObj);
+            var ports = snapshot.Allocations;
             hasInternal = ports.Any(p => p.Kind == PortConnectionKind.Internal);
             var externalPorts = ports.Where(p => p.Kind == PortConnectionKind.External).ToList();
             hasExternal = externalPorts.Count > 0;
@@ -259,7 +261,8 @@ namespace ExHyperV.Services
             var adapters = await GetPhysicalAdaptersAsync();
             var upstream = adapters.SingleOrDefault(a => a.ConnectionId == externalAdapterId);
             var icsResponse = await ComApi.GetConnectionsAsync();
-            string? stateError = !icsResponse.Success ? icsResponse.Error : externalPorts.Count > 1 ? "Multiple uplink ports require explicit configuration." : null;
+            string? stateError = !snapshot.Complete ? Properties.Resources.Network_SystemManagedPorts
+                : !icsResponse.Success ? icsResponse.Error : externalPorts.Count > 1 ? "Multiple uplink ports require explicit configuration." : null;
             if (icsResponse.Success)
             {
                 var privateId = await GetHostConnectionIdAsync(switchName);
@@ -876,8 +879,18 @@ namespace ExHyperV.Services
         }
 
         private sealed record PortAllocation(string Path, PortConnectionKind Kind, string HostResource, string Xml);
+        private sealed record PortAllocationSnapshot(List<PortAllocation> Allocations, bool Complete);
 
         private static async Task<List<PortAllocation>> GetPortAllocationsAsync(ManagementObject switchObj)
+        {
+            // Configuration changes must never act on an incomplete port snapshot.
+            var snapshot = await GetPortAllocationSnapshotAsync(switchObj);
+            if (!snapshot.Complete)
+                throw new InvalidOperationException(Properties.Resources.Network_SystemManagedPorts);
+            return snapshot.Allocations;
+        }
+
+        private static async Task<PortAllocationSnapshot> GetPortAllocationSnapshotAsync(ManagementObject switchObj)
         {
             // 返回值只保留属性快照，避免 QueryRelatedAsync 释放对象后再读取。
             var portPaths = await WmiApi.QueryRelatedAsync(
@@ -886,6 +899,7 @@ namespace ExHyperV.Services
                 throw new InvalidOperationException(portPaths.Error);
 
             var allocations = new List<PortAllocation>();
+            bool complete = true;
             foreach (var path in portPaths.Data)
             {
                 using var port = new ManagementObject(switchObj.Scope, new ManagementPath(path), null);
@@ -894,11 +908,15 @@ namespace ExHyperV.Services
                     p => new PortAllocation(p.Path.Path, DeterminePortType(p),
                         (p["HostResource"] as string[])?.FirstOrDefault() ?? string.Empty, p.GetText(TextFormat.CimDtd20)),
                     "Msvm_ElementSettingData");
-                if (!settings.Success || settings.Data == null || settings.Data.Count == 0)
+                if (!settings.Success || settings.Data == null)
                     throw new InvalidOperationException($"Cannot read switch port allocation: {path}. {settings.Error}");
+                // System-managed ports (for example on FSE Switch) can legitimately
+                // have no ordinary allocation setting. Keep listing the switches,
+                // but mark their state incomplete and refuse configuration changes.
+                if (settings.Data.Count == 0) { complete = false; continue; }
                 allocations.AddRange(settings.Data);
             }
-            return allocations;
+            return new(allocations, complete);
         }
 
         private static async Task RemoveInternalPortsAsync(ManagementObject switchObj, ManagementScope ms)

@@ -10327,5 +10327,6 @@ namespace ExHyperV.Properties {
         public static string Network_StateUnknown => ResourceManager.GetString("Network_StateUnknown", resourceCulture);
         public static string Network_UplinkConfigured => ResourceManager.GetString("Network_UplinkConfigured", resourceCulture);
         public static string Network_UpstreamMissing => ResourceManager.GetString("Network_UpstreamMissing", resourceCulture);
+        public static string Network_SystemManagedPorts => ResourceManager.GetString("Network_SystemManagedPorts", resourceCulture);
     }
 }

@@ -28,7 +28,7 @@
             <ui:Card Grid.Row="0" Margin="0,5,0,5" BorderBrush="DarkRed" BorderThickness="1" Background="#19FF0000">
                 <ui:Card.Style>
                     <Style TargetType="ui:Card">
-                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ErrorMessage, TargetNullValue=''}" Value="">
                                 <Setter Property="Visibility" Value="Collapsed"/>
