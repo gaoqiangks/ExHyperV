@@ -92,6 +92,7 @@ namespace ExHyperV.Tools
                 });
 
                 dynamic adv = rdp.AdvancedSettings9;
+                ApplyResourceRedirection(s);
                 adv.RDPPort = s.Port;
                 adv.AuthenticationLevel = s.AuthenticationLevel;
                 if (!string.IsNullOrEmpty(s.AuthenticationServiceClass))
@@ -180,6 +181,17 @@ namespace ExHyperV.Tools
                 ExHyperV.Services.AutoConnectLog.Write("RDP connection failed: " + ex.GetType().Name);
                 Debug.WriteLine("[Rdp] ApplyAndConnect 异常: " + ex);
             }
+        }
+
+        private void ApplyResourceRedirection(RdpConnectionSettings settings)
+        {
+            // File copy/paste also needs drive redirection. Configure both before
+            // connecting; the ActiveX default enables text but disables drives.
+            dynamic rdp = GetOcx();
+            dynamic advanced = rdp.AdvancedSettings9;
+            advanced.RedirectClipboard = settings.RedirectClipboard;
+            advanced.RedirectDrives = settings.RedirectDrives;
+            ExHyperV.Services.AutoConnectLog.Write($"RDP resource redirection: clipboard={advanced.RedirectClipboard}; drives={advanced.RedirectDrives}");
         }
 
         public void DisconnectSafe()

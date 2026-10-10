@@ -284,6 +284,7 @@ namespace ExHyperV.Views
         private static RdpConnectionSettings BuildHyperVSettings(string vmId, string vmName, bool enhanced, int reuseWidth, int reuseHeight, uint desktopScale)
         {
             var id = (vmId ?? string.Empty).Trim().ToUpperInvariant();
+            var options = ExHyperV.Services.AutoConnectOptions.Load();
             var settings = new RdpConnectionSettings
             {
                 Server = "localhost",
@@ -294,6 +295,8 @@ namespace ExHyperV.Views
                 NetworkLevelAuthentication = true,
                 NegotiateSecurityLayer = false,
                 DisableCredentialsDelegation = true,
+                RedirectClipboard = enhanced && options.RedirectClipboard,
+                RedirectDrives = enhanced && options.RedirectDrives,
                 FullScreenHotKeyVirtualKey = FullScreenHotKeyVk,   // mstscax 自带全屏热键(Ctrl+Alt+Enter)；非 100% 缩放下其 guard 会挡住、无热键全屏(接受)
                 ConnectionTimeoutSeconds = ConnectTimeoutSeconds,
                 DesktopWidth = enhanced ? reuseWidth : 0,

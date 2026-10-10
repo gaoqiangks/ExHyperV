@@ -25,6 +25,8 @@ namespace ExHyperV.Tools
         public bool NetworkLevelAuthentication { get; set; }
         public bool NegotiateSecurityLayer { get; set; } = true;
         public bool DisableCredentialsDelegation { get; set; }
+        public bool RedirectClipboard { get; set; }
+        public bool RedirectDrives { get; set; }
 
         /// <summary>增强会话可指定初始分辨率；&lt;=0 表示不设置。</summary>
         public int DesktopWidth { get; set; }

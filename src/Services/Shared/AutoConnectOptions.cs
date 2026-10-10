@@ -12,6 +12,8 @@ internal sealed class AutoConnectOptions
     public bool Enabled { get; set; }
     public bool OpenMainWhenConnected { get; set; } = true;
     public bool PreferEnhancedSession { get; set; } = true;
+    public bool RedirectClipboard { get; set; } = true;
+    public bool RedirectDrives { get; set; } = true;
     public bool DefaultVmManagementPage { get; set; } = true;
     public string VmName { get; set; } = "";
     public string WindowMode { get; set; } = "Maximized";
