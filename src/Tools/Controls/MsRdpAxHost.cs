@@ -108,13 +108,14 @@ namespace ExHyperV.Tools
 
                 // DisableCredentialsDelegation 非强类型属性，经 IMsRdpExtendedSettings 字符串属性包设置——
                 // 避免 reason=3848（凭据委派被拒），也是 stock typelib 查不到同名属性的原因。
-                if (s.DisableCredentialsDelegation)
-                    TrySet("DisableCredentialsDelegation", () =>
-                    {
-                        var ext = (IMsRdpExtendedSettings)GetOcx();
-                        object on = true;
-                        ext.set_Property("DisableCredentialsDelegation", ref on);
-                    });
+                // The same OCX is reused when switching session modes. Restore
+                // delegation for guest login after a basic VMMS connection.
+                TrySet("DisableCredentialsDelegation", () =>
+                {
+                    var ext = (IMsRdpExtendedSettings)GetOcx();
+                    object disabled = s.DisableCredentialsDelegation;
+                    ext.set_Property("DisableCredentialsDelegation", ref disabled);
+                });
 
                 // 初始缩放必须在连接前设置，动态显示接口无法影响首次显示的登录界面。
                 if (s.DesktopScaleFactor is >= 100 and <= 500)
