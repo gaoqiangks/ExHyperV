@@ -8,6 +8,7 @@
     xmlns:properties="clr-namespace:ExHyperV.Properties"
     xmlns:converters="clr-namespace:ExHyperV.Converters"
     xmlns:vm="clr-namespace:ExHyperV.ViewModels"
+    xmlns:models="clr-namespace:ExHyperV.Models"
     mc:Ignorable="d"
     d:DataContext="{d:DesignInstance Type=vm:SettingsPageViewModel, IsDesignTimeCreatable=True}"
     Title="Setting"
@@ -20,6 +21,7 @@
 
     <StackPanel Margin="15,15,15,24">
         <Button Content="自动连接窗口与登录设置" Click="OpenAutoConnectSettings" HorizontalAlignment="Left" Margin="0,0,0,12" />
+        <Button Content="{x:Static models:DesktopScaleText.Title}" Click="OpenEnhancedSessionDisplaySettings" HorizontalAlignment="Left" Margin="0,0,0,12" />
         <ui:TextBlock
             Margin="0,0,0,8"
             FontTypography="BodyStrong"

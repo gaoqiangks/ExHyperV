@@ -42,6 +42,8 @@ namespace ExHyperV.Views
         private bool _windowFollowsResolution;    // 下拉改分辨率后置位：待画面真的变到新分辨率(RemoteSizeChanged)再让窗口跟随确认值；拖动会清掉(窗口归用户掌控)
         private int _postLoginWidth;               // 登录界面可能忽略动态分辨率；登录完成后重试此目标
         private int _postLoginHeight;
+        private int _scaleReconnectWidth;
+        private int _scaleReconnectHeight;
         private WindowStyle _origWindowStyle;                     // 全屏前的 WindowStyle，退出恢复
         private WindowBackdropType _origBackdrop;                 // 全屏前的背景类型(Mica)，退出恢复
         private System.Windows.Media.Brush? _origBackground;      // 全屏前的窗口底色，退出恢复
@@ -77,7 +79,7 @@ namespace ExHyperV.Views
                 _postLoginHeight = h;
                 SettingsService.SaveDefaultConsoleResolution(w, h); // 用户明确选择，立即保存；不等待来宾是否接受
                 _windowFollowsResolution = true;
-                RdpHost.Resize(w, h, GetDpiScale());
+                RdpHost.Resize(w, h, GetDpiScale(), GetSessionDesktopScale());
             };
 
             // RDP 承载控件事件（原生事件，取代旧实现的 20ms 轮询）
@@ -104,7 +106,7 @@ namespace ExHyperV.Views
                 int height = _postLoginHeight > 0 ? _postLoginHeight : _vm.InitialEnhancedHeight;
                 if (width <= 0 || height <= 0) return;
                 _windowFollowsResolution = true;
-                RdpHost.Resize(width, height, GetDpiScale());
+                RdpHost.Resize(width, height, GetDpiScale(), GetSessionDesktopScale());
             }));
             RdpHost.Disconnected += reason => Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -212,6 +214,15 @@ namespace ExHyperV.Views
         {
             switch (e.PropertyName)
             {
+                case nameof(ConsoleViewModel.DesktopScalePercent):
+                    if (_vm.IsEnhancedMode && _vm.SupportsDesktopScale)
+                    {
+                        _scaleReconnectWidth = _vm.CurrentWidth;
+                        _scaleReconnectHeight = _vm.CurrentHeight;
+                        SyncConnection(forceReconnect: true);
+                    }
+                    break;
+
                 case nameof(ConsoleViewModel.IsEnhancedMode):
                     // 切换前仍处于基本会话，此时重置 ZoomLevel 不会影响增强会话连接。
                     // 必须早于进入增强——增强靠动态分辨率，不能带基本会话残留的缩放；且一旦进了增强再 mid-session 设
@@ -262,9 +273,10 @@ namespace ExHyperV.Views
                 if (RdpHost.ConnectionState == 0)   // 该连而未连（force+已连的已在上面断开并挂起重连）
                 {
                     _enhancedConnecting = _vm.IsEnhancedMode;   // 记下本次是否在尝试增强（失败则回退基本）
-                    uint desktopScale = (uint)Math.Clamp(Math.Round(GetDpiScale() * 100.0), 100, 500);
-                    int initialWidth = _vm.IsEnhancedMode ? _vm.InitialEnhancedWidth : _vm.CurrentWidth;
-                    int initialHeight = _vm.IsEnhancedMode ? _vm.InitialEnhancedHeight : _vm.CurrentHeight;
+                    uint desktopScale = GetSessionDesktopScale();
+                    int initialWidth = _vm.IsEnhancedMode ? (_scaleReconnectWidth > 0 ? _scaleReconnectWidth : _vm.InitialEnhancedWidth) : _vm.CurrentWidth;
+                    int initialHeight = _vm.IsEnhancedMode ? (_scaleReconnectHeight > 0 ? _scaleReconnectHeight : _vm.InitialEnhancedHeight) : _vm.CurrentHeight;
+                    _scaleReconnectWidth = _scaleReconnectHeight = 0;
                     if (_vm.IsEnhancedMode)
                     {
                         _postLoginWidth = initialWidth;
@@ -279,6 +291,9 @@ namespace ExHyperV.Views
                 RdpHost.Disconnect();
             }
         }
+
+        private uint GetSessionDesktopScale() => EnhancedSessionDisplayOptions.ResolvePercent(
+            _vm.DesktopScalePercent, GetDpiScale());
 
         // Hyper-V 控制台连接配方（消费层组装；增强沿用当前分辨率作初始尺寸，避免切换跳变）。
         private static RdpConnectionSettings BuildHyperVSettings(string vmId, string vmName, bool enhanced, int reuseWidth, int reuseHeight, uint desktopScale)
@@ -570,7 +585,7 @@ namespace ExHyperV.Views
             int py = (int)Math.Round((RdpArea.ActualHeight - bw) * dpiY);
             bool willResize = px >= 200 && py >= 200 && (px != _vm.CurrentWidth || py != _vm.CurrentHeight);
             if (willResize)
-                RdpHost.Resize(px, py, GetDpiScale());
+                RdpHost.Resize(px, py, GetDpiScale(), GetSessionDesktopScale());
         }
 
         // ── CAD / 关闭 ──────────────────────────────────────────────────────

@@ -40,6 +40,7 @@ internal static class AutoConnectStartup
     {
         var args = Environment.GetCommandLineArgs();
         int flag = Array.IndexOf(args, "--auto-connect");
+        if (args.Contains("--display-settings")) { new EnhancedSessionDisplaySettingsWindow { Owner = owner }.Show(); return; }
         if (args.Contains("--settings")) { new AutoConnectSettingsWindow { Owner = owner }.Show(); return; }
         if (started) return;
         if (args.Contains("--no-auto-connect")) { owner.ShowStartupPage(); return; }

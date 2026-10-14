@@ -124,7 +124,8 @@ namespace ExHyperV.Tools
         }
 
         /// <summary>增强会话改分辨率（不重连）。</summary>
-        public void Resize(int width, int height, double dpiScale) => _ax.SetResolution(width, height, dpiScale);
+        public void Resize(int width, int height, double dpiScale, uint? desktopScalePercent = null) =>
+            _ax.SetResolution(width, height, dpiScale, desktopScalePercent);
 
         /// <summary>动态开关 SmartSizing（基本会话：VM 分辨率超出画面区时开=缩放铺满，否则关=原生清晰）。</summary>
         public void SetSmartSizing(bool on) => _ax.SetSmartSizing(on);

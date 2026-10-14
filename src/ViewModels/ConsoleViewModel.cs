@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ExHyperV.Services;
+using ExHyperV.Models;
 
 namespace ExHyperV.ViewModels
 {
@@ -13,6 +14,7 @@ namespace ExHyperV.ViewModels
         private readonly VmQueryService _queryService = new();
         private DispatcherTimer _statusTimer = null!;
         private bool _polling;   // 防止上一次轮询(WMI 慢)未完成时重入
+        private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
         private const int DefaultEnhancedWidth = 1920;
         private const int DefaultEnhancedHeight = 1080;
 
@@ -44,6 +46,8 @@ namespace ExHyperV.ViewModels
         {
             VmId = vmId;
             VmName = vmName;
+            _desktopScalePercent = EnhancedSessionDisplayOptions.Load().GetPercent(vmId);
+            _supportsDesktopScale = !EnhancedSessionCredentials.IsConfigured(vmName);
             // 打开控制台时优先用配置里保存的缩放档（语言中立："auto"→当前语言的适应窗口，百分比直用）；无/无效则保持默认 100%。
             var savedZoom = SettingsService.GetDefaultZoom();
             if (savedZoom == ZoomAutoToken) SelectedZoom = Properties.Resources.ConsoleWindow_ZoomAuto;
@@ -59,6 +63,7 @@ namespace ExHyperV.ViewModels
                 _currentHeight = InitialEnhancedHeight;
             }
             StartStatusPolling();
+            EnhancedSessionDisplayOptions.Changed += OnDesktopScaleSaved;
         }
 
         [ObservableProperty] private bool _isFullScreen = false;
@@ -90,6 +95,14 @@ namespace ExHyperV.ViewModels
                 {
                     IsRunning = currentVm.IsRunning;                       // 更新运行状态
                     if (VmName != currentVm.Name) VmName = currentVm.Name; // 更新名称
+                    // The manager may run in another ExHyperV process while a
+                    // console is connected. Reuse the existing poll to pick up
+                    // its atomically saved display preferences too.
+                    if (SupportsDesktopScale)
+                    {
+                        int savedScale = EnhancedSessionDisplayOptions.Load().GetPercent(VmId);
+                        if (savedScale != DesktopScalePercent) DesktopScalePercent = savedScale;
+                    }
 
                     // 根据增强会话可用状态更新菜单并处理自动切换。
                     bool avail = currentVm.IsRunning && await VmConsoleService.IsEnhancedSessionAvailableAsync(currentVm.Name);
@@ -205,6 +218,43 @@ namespace ExHyperV.ViewModels
         // 配置里存语言中立值：本地化"适应窗口"存 "auto"，百分比本身中立 → 切中英文后配置仍对得上。
         private const string ZoomAutoToken = "auto";
 
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(SelectedDesktopScaleLabel))]
+        private int _desktopScalePercent;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanChangeDesktopScale))]
+        private bool _supportsDesktopScale = true;
+
+        public bool CanChangeDesktopScale => IsEnhancedMode && SupportsDesktopScale;
+        public string SelectedDesktopScaleLabel => new DesktopScaleOption(DesktopScalePercent).Label;
+        public ObservableCollection<DesktopScaleOption> DesktopScaleOptions { get; } =
+            new(EnhancedSessionDisplayOptions.Presets.Select(p => new DesktopScaleOption(p)));
+
+        [RelayCommand]
+        private void ChangeDesktopScale(DesktopScaleOption option)
+        {
+            if (!SupportsDesktopScale || option == null || option.Percent == DesktopScalePercent) return;
+            try
+            {
+                var settings = EnhancedSessionDisplayOptions.Load();
+                settings.SetPercent(VmId, option.Percent);
+                settings.Save(VmId);
+                DesktopScalePercent = option.Percent;
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(ex.Message, DesktopScaleText.SaveFailed);
+            }
+        }
+
+        private void OnDesktopScaleSaved(string vmId, int percent)
+        {
+            if (!Guid.TryParse(vmId, out var savedId) || !Guid.TryParse(VmId, out var currentId) || savedId != currentId) return;
+            if (_dispatcher.CheckAccess()) DesktopScalePercent = percent;
+            else _dispatcher.BeginInvoke(new Action(() => DesktopScalePercent = percent));
+        }
+
         [RelayCommand]
         private void ChangeZoom(string zoom)
         {
@@ -242,6 +292,7 @@ namespace ExHyperV.ViewModels
         {
             IsEnhancedMode = (value == Properties.Resources.ConsoleViewModel_EnhancedSession);
             OnPropertyChanged(nameof(CanChangeResolution));
+            OnPropertyChanged(nameof(CanChangeDesktopScale));
         }
 
         public bool CanChangeResolution => IsEnhancedMode;
@@ -278,6 +329,10 @@ namespace ExHyperV.ViewModels
                 ResolutionChangeRequested?.Invoke(w, h);
         }
 
-        public void Dispose() => _statusTimer?.Stop();
+        public void Dispose()
+        {
+            EnhancedSessionDisplayOptions.Changed -= OnDesktopScaleSaved;
+            _statusTimer?.Stop();
+        }
     }
 }

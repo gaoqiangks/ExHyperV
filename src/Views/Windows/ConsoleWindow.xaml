@@ -7,6 +7,7 @@
     
     xmlns:converters="clr-namespace:ExHyperV.Converters"
     xmlns:tools="clr-namespace:ExHyperV.Tools"
+    xmlns:models="clr-namespace:ExHyperV.Models"
     Title="{Binding VmName}"
     MinWidth="600"
     MinHeight="340"
@@ -118,7 +119,27 @@
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>
 
-                        <!-- 缩放下拉：仅基本会话显示（增强会话画面原生跟随窗口、缩放无意义）。放大是拉伸、会糊。 -->
+                        <!-- Enhanced scaling changes the guest DPI, independently of bitmap zoom. -->
+                        <ui:DropDownButton Content="{Binding SelectedDesktopScaleLabel}"
+                                           Icon="{ui:SymbolIcon Symbol=ZoomIn24}"
+                                           Appearance="Transparent" Background="Transparent"
+                                           FontSize="16" Height="32" Padding="8,0" Margin="8,0,0,0"
+                                           ToolTip="{x:Static models:DesktopScaleText.Hint}"
+                                           Visibility="{Binding CanChangeDesktopScale, Converter={StaticResource BoolToVis}}">
+                            <ui:DropDownButton.Flyout>
+                                <ContextMenu ItemsSource="{Binding DesktopScaleOptions}">
+                                    <ContextMenu.ItemContainerStyle>
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                            <Setter Property="Header" Value="{Binding Label}" />
+                                            <Setter Property="Command" Value="{Binding DataContext.ChangeDesktopScaleCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            <Setter Property="CommandParameter" Value="{Binding}" />
+                                        </Style>
+                                    </ContextMenu.ItemContainerStyle>
+                                </ContextMenu>
+                            </ui:DropDownButton.Flyout>
+                        </ui:DropDownButton>
+
+                        <!-- Basic-session zoom stretches the framebuffer. -->
                         <ui:DropDownButton Content="{Binding SelectedZoom}"
                                    Icon="{ui:SymbolIcon Symbol=ZoomIn24}"
                                    Appearance="Transparent" Background="Transparent"

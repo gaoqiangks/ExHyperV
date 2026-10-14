@@ -3993,4 +3993,12 @@
   <data name="Network_SystemManagedPorts" xml:space="preserve">
     <value>存在系统管理端口，部分连接信息不可用；该交换机不能在此修改。</value>
   </data>
+  <data name="DesktopScale_Automatic" xml:space="preserve"><value>跟随宿主机</value></data>
+  <data name="DesktopScale_Title" xml:space="preserve"><value>增强会话显示缩放</value></data>
+  <data name="DesktopScale_Hint" xml:space="preserve"><value>调整文字和应用的大小。保存后自动重连该虚拟机，不会关闭虚拟机。</value></data>
+  <data name="DesktopScale_Description" xml:space="preserve"><value>为每台 Windows 虚拟机单独设置显示缩放。“跟随宿主机”使用连接窗口所在显示器的缩放比例。</value></data>
+  <data name="DesktopScale_LinuxHint" xml:space="preserve"><value>此 Linux 连接请在来宾系统的显示设置中调整缩放。</value></data>
+  <data name="DesktopScale_VirtualMachine" xml:space="preserve"><value>虚拟机</value></data>
+  <data name="DesktopScale_Save" xml:space="preserve"><value>保存</value></data>
+  <data name="DesktopScale_SaveFailed" xml:space="preserve"><value>无法保存显示缩放</value></data>
 </root>

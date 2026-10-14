@@ -3993,4 +3993,12 @@ Remove them from storage and retry? Cancel to re-plug the device and try again.<
   <data name="Network_SystemManagedPorts" xml:space="preserve">
     <value>System-managed ports have no allocation settings. Connection information is incomplete; this switch cannot be modified here.</value>
   </data>
+  <data name="DesktopScale_Automatic" xml:space="preserve"><value>Follow host</value></data>
+  <data name="DesktopScale_Title" xml:space="preserve"><value>Enhanced session display scale</value></data>
+  <data name="DesktopScale_Hint" xml:space="preserve"><value>Changes text and app sizes. Saving reconnects this VM without shutting it down.</value></data>
+  <data name="DesktopScale_Description" xml:space="preserve"><value>Set the display scale independently for each Windows VM. Follow host uses the scale of the monitor containing the connection window.</value></data>
+  <data name="DesktopScale_LinuxHint" xml:space="preserve"><value>For this Linux connection, change the scale in the guest's display settings.</value></data>
+  <data name="DesktopScale_VirtualMachine" xml:space="preserve"><value>Virtual machine</value></data>
+  <data name="DesktopScale_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="DesktopScale_SaveFailed" xml:space="preserve"><value>Unable to save display scale</value></data>
 </root>

@@ -124,6 +124,7 @@ namespace ExHyperV.Tools
                         var ext = (IMsRdpExtendedSettings)GetOcx();
                         object value = s.DesktopScaleFactor;
                         ext.set_Property("DesktopScaleFactor", ref value);
+                        ExHyperV.Services.AutoConnectLog.Write($"RDP desktop scale configured: {s.DesktopScaleFactor}% ({s.ConnectionBarText})");
                     });
                 if (s.DeviceScaleFactor is 100 or 140 or 180)
                     TrySet("DeviceScaleFactor", () =>
@@ -240,7 +241,7 @@ namespace ExHyperV.Tools
         }
 
         /// <summary>增强会话改分辨率（不重连）。命名避开 Control.Resize 事件（否则 CS0108 隐藏告警）。</summary>
-        public void SetResolution(int width, int height, double dpiScale)
+        public void SetResolution(int width, int height, double dpiScale, uint? desktopScalePercent = null)
         {
             if (width <= 0 || height <= 0) return;
             try
@@ -250,7 +251,8 @@ namespace ExHyperV.Tools
                 // deviceScaleFactor=100。末位传 1 是非法值(合法仅 100/140/180)，会让分辨率协商被拒 → 画面不随分辨率刷新+灰信箱。
                 // 使用承载窗口提供的 DPI，避免 AxHost.DeviceDpi 在首次连接时仍为旧值。
                 uint dpi = (uint)Math.Max(96, Math.Round(96.0 * dpiScale));
-                uint desktopScaleFactor = guestBridge != null ? 100u : (uint)Math.Round(dpi / 96.0 * 100.0);
+                uint desktopScaleFactor = guestBridge != null ? 100u :
+                    desktopScalePercent ?? (uint)Math.Round(dpi / 96.0 * 100.0);
                 uint physW = (uint)Math.Round(width * 25.4 / dpi);
                 uint physH = (uint)Math.Round(height * 25.4 / dpi);
                 rdp.UpdateSessionDisplaySettings((uint)width, (uint)height, physW, physH, 0u, desktopScaleFactor, 100u);
