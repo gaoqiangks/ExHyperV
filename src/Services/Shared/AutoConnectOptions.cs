@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 namespace ExHyperV.Services;
 internal sealed class StartupVmOption
 {
@@ -15,6 +16,7 @@ internal sealed class AutoConnectOptions
     public bool RedirectClipboard { get; set; } = true;
     public bool RedirectDrives { get; set; } = true;
     public bool DefaultVmManagementPage { get; set; } = true;
+    public string ConsoleToolbarPosition { get; set; } = "Left";
     public string VmName { get; set; } = "";
     public string WindowMode { get; set; } = "Maximized";
     public bool CloseMainAfterConnect { get; set; } = true;
@@ -28,7 +30,23 @@ internal sealed class AutoConnectOptions
         try { return Parse(File.ReadAllText(ConfigPath)); }
         catch (Exception ex) { AutoConnectLog.Write("Settings read failed: " + ex.Message); return new(); }
     }
-    internal static AutoConnectOptions Parse(string json) => JsonSerializer.Deserialize<AutoConnectOptions>(json) ?? new();
+    internal static AutoConnectOptions Parse(string json)
+    {
+        if (JsonNode.Parse(json) is not JsonObject root) return new();
+        string position = "Left";
+        if (root.TryGetPropertyValue(nameof(ConsoleToolbarPosition), out var positionNode))
+        {
+            if (positionNode is JsonValue positionValue
+                && positionValue.TryGetValue<string>(out var savedPosition)
+                && IsValidToolbarPosition(savedPosition)) position = savedPosition;
+        }
+        else if (root.TryGetPropertyValue("ConsoleToolbarOnLeft", out var legacyNode)
+            && legacyNode is JsonValue legacyValue
+            && legacyValue.TryGetValue<bool>(out bool onLeft)) position = onLeft ? "Left" : "Top";
+        root[nameof(ConsoleToolbarPosition)] = position;
+        return root.Deserialize<AutoConnectOptions>() ?? new();
+    }
+    private static bool IsValidToolbarPosition(string? position) => position is "Top" or "Left" or "Right" or "Bottom";
     public List<StartupVmOption> StartupTargets()
     {
         if (VirtualMachines != null) return VirtualMachines.Where(v => v.Enabled).ToList();
@@ -51,6 +69,7 @@ internal sealed class AutoConnectOptions
     public void Save()
     {
         if (WindowMode is not ("Normal" or "Maximized" or "Minimized" or "FullScreen")) throw new ArgumentException("窗口状态无效。");
+        if (!IsValidToolbarPosition(ConsoleToolbarPosition)) throw new ArgumentException("控制栏位置无效。");
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         string temp = ConfigPath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));

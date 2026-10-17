@@ -1,0 +1,61 @@
+using System.Globalization;
+using System.Resources;
+
+namespace ExHyperV.Properties;
+
+public static class VmManagementText
+{
+    private static readonly ResourceManager Manager = new("ExHyperV.Properties.VmManagement", typeof(VmManagementText).Assembly);
+    private static string Get(string key) => Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
+    public static string Title => Get(nameof(Title));
+    public static string Hint => Get(nameof(Hint));
+    public static string ApplyHint => Get(nameof(ApplyHint));
+    public static string Name => Get(nameof(Name));
+    public static string Apply => Get(nameof(Apply));
+    public static string Browse => Get(nameof(Browse));
+    public static string Refresh => Get(nameof(Refresh));
+    public static string Integration => Get(nameof(Integration));
+    public static string IntegrationHint => Get(nameof(IntegrationHint));
+    public static string IntegrationEmpty => Get(nameof(IntegrationEmpty));
+    public static string ShutdownService => Get(nameof(ShutdownService));
+    public static string TimeSyncService => Get(nameof(TimeSyncService));
+    public static string DataExchangeService => Get(nameof(DataExchangeService));
+    public static string HeartbeatService => Get(nameof(HeartbeatService));
+    public static string BackupService => Get(nameof(BackupService));
+    public static string GuestService => Get(nameof(GuestService));
+    public static string Checkpoints => Get(nameof(Checkpoints));
+    public static string CheckpointHint => Get(nameof(CheckpointHint));
+    public static string CheckpointType => Get(nameof(CheckpointType));
+    public static string CheckpointDisabled => Get(nameof(CheckpointDisabled));
+    public static string CheckpointStandard => Get(nameof(CheckpointStandard));
+    public static string CheckpointProduction => Get(nameof(CheckpointProduction));
+    public static string CheckpointProductionOnly => Get(nameof(CheckpointProductionOnly));
+    public static string AutomaticCheckpoints => Get(nameof(AutomaticCheckpoints));
+    public static string CheckpointDirectory => Get(nameof(CheckpointDirectory));
+    public static string CheckpointDirectoryHint => Get(nameof(CheckpointDirectoryHint));
+    public static string SmartPaging => Get(nameof(SmartPaging));
+    public static string SmartPagingHint => Get(nameof(SmartPagingHint));
+    public static string AutomaticStart => Get(nameof(AutomaticStart));
+    public static string AutomaticStartHint => Get(nameof(AutomaticStartHint));
+    public static string StartNone => Get(nameof(StartNone));
+    public static string StartIfRunning => Get(nameof(StartIfRunning));
+    public static string StartAlways => Get(nameof(StartAlways));
+    public static string StartDelay => Get(nameof(StartDelay));
+    public static string AutomaticStop => Get(nameof(AutomaticStop));
+    public static string AutomaticStopHint => Get(nameof(AutomaticStopHint));
+    public static string StopSave => Get(nameof(StopSave));
+    public static string StopTurnOff => Get(nameof(StopTurnOff));
+    public static string StopShutdown => Get(nameof(StopShutdown));
+    public static string StopHint => Get(nameof(StopHint));
+    public static string Saved => Get(nameof(Saved));
+    public static string Loading => Get(nameof(Loading));
+    public static string VmNotFound => Get(nameof(VmNotFound));
+    public static string InvalidName => Get(nameof(InvalidName));
+    public static string InvalidStart => Get(nameof(InvalidStart));
+    public static string InvalidStop => Get(nameof(InvalidStop));
+    public static string InvalidCheckpoint => Get(nameof(InvalidCheckpoint));
+    public static string InvalidDirectory => Get(nameof(InvalidDirectory));
+    public static string InvalidIntegration => Get(nameof(InvalidIntegration));
+    public static string GpuSaveUnsupported => Get(nameof(GpuSaveUnsupported));
+    public static string Unsupported => Get(nameof(Unsupported));
+}

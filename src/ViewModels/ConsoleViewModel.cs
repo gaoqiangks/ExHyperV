@@ -107,9 +107,15 @@ namespace ExHyperV.ViewModels
                     // 根据增强会话可用状态更新菜单并处理自动切换。
                     bool avail = currentVm.IsRunning && await VmConsoleService.IsEnhancedSessionAvailableAsync(currentVm.Name);
                     IsEnhancedAvailable = avail;
-                    if (!avail) _promotedThisAvailability = false;
-                    if (_preferEnhanced && avail && !IsEnhancedMode && !_promotedThisAvailability && CurrentWidth > 0)
+                    if (!avail)
                     {
+                        _promotedThisAvailability = false;
+                        _enhancedRetry.Reset();
+                    }
+                    if (_preferEnhanced && avail && !IsEnhancedMode && CurrentWidth > 0
+                        && (!_promotedThisAvailability || _enhancedRetry.IsDue(DateTimeOffset.UtcNow)))
+                    {
+                        _enhancedRetry.Consume();
                         _promotedThisAvailability = true;
                         SelectedSessionMode = Properties.Resources.ConsoleViewModel_EnhancedSession;
                     }
@@ -274,19 +280,27 @@ namespace ExHyperV.ViewModels
 
         private bool _preferEnhanced;
         private bool _promotedThisAvailability;      // 防止同一可用周期内重复自动切换
+        private readonly EnhancedSessionRetry _enhancedRetry = new();
 
         // 仅持久化用户主动选择的模式。
         [RelayCommand]
         private void SwitchSessionMode(string mode)
         {
-            SelectedSessionMode = mode;
             _preferEnhanced = (mode == Properties.Resources.ConsoleViewModel_EnhancedSession);
+            _enhancedRetry.Reset();
+            SelectedSessionMode = mode;
             SettingsService.SaveDefaultConnectionMode(_preferEnhanced ? ModeEnhancedToken : ModeBasicToken);
             _promotedThisAvailability = _preferEnhanced;
         }
 
         /// <summary>增强会话连接失败时回退到基本会话（顶部会话开关随之切回，并触发以基本会话重连）。</summary>
-        public void FallbackToBasicSession() => SelectedSessionMode = Properties.Resources.ConsoleViewModel_BasicSession;
+        public void FallbackToBasicSession()
+        {
+            if (_preferEnhanced) _enhancedRetry.Schedule(DateTimeOffset.UtcNow);
+            SelectedSessionMode = Properties.Resources.ConsoleViewModel_BasicSession;
+        }
+
+        public void ConfirmEnhancedSessionConnected() => _enhancedRetry.Reset();
 
         partial void OnSelectedSessionModeChanged(string value)
         {

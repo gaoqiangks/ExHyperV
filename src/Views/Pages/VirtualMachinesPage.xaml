@@ -560,6 +560,15 @@
                                         </Setter.Value>
                                     </Setter>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding DataContext.CurrentViewType, RelativeSource={RelativeSource AncestorType=Page}}" Value="Management">
+                                    <Setter Property="ContentTemplate">
+                                        <Setter.Value>
+                                            <DataTemplate>
+                                                <components:VmManagementSettingsView/>
+                                            </DataTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding DataContext.CurrentViewType, RelativeSource={RelativeSource AncestorType=Page}}" Value="Advanced">
                                     <Setter Property="ContentTemplate">
                                         <Setter.Value>

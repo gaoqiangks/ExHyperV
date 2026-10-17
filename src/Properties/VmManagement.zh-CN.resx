@@ -1,0 +1,168 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="Title" xml:space="preserve">
+    <value>虚拟机管理设置</value>
+  </data>
+  <data name="Hint" xml:space="preserve">
+    <value>名称、集成服务、检查点及宿主机开关机行为</value>
+  </data>
+  <data name="ApplyHint" xml:space="preserve">
+    <value>每个“应用”按钮仅保存对应分组。</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="Browse" xml:space="preserve">
+    <value>浏览…</value>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>重新读取设置</value>
+  </data>
+  <data name="Integration" xml:space="preserve">
+    <value>集成服务</value>
+  </data>
+  <data name="IntegrationHint" xml:space="preserve">
+    <value>设置宿主机允许虚拟机使用的服务；来宾系统也需要支持相应的集成组件。</value>
+  </data>
+  <data name="IntegrationEmpty" xml:space="preserve">
+    <value>Hyper-V 未返回可配置的集成服务。</value>
+  </data>
+  <data name="ShutdownService" xml:space="preserve">
+    <value>操作系统关闭</value>
+  </data>
+  <data name="TimeSyncService" xml:space="preserve">
+    <value>时间同步</value>
+  </data>
+  <data name="DataExchangeService" xml:space="preserve">
+    <value>数据交换</value>
+  </data>
+  <data name="HeartbeatService" xml:space="preserve">
+    <value>检测信号</value>
+  </data>
+  <data name="BackupService" xml:space="preserve">
+    <value>备份（卷影复制）</value>
+  </data>
+  <data name="GuestService" xml:space="preserve">
+    <value>来宾服务接口</value>
+  </data>
+  <data name="Checkpoints" xml:space="preserve">
+    <value>检查点</value>
+  </data>
+  <data name="CheckpointHint" xml:space="preserve">
+    <value>标准检查点保存内存和设备状态；生产检查点使用来宾系统的备份服务。</value>
+  </data>
+  <data name="CheckpointType" xml:space="preserve">
+    <value>检查点类型</value>
+  </data>
+  <data name="CheckpointDisabled" xml:space="preserve">
+    <value>禁用检查点</value>
+  </data>
+  <data name="CheckpointStandard" xml:space="preserve">
+    <value>标准检查点</value>
+  </data>
+  <data name="CheckpointProduction" xml:space="preserve">
+    <value>生产检查点（允许标准回退）</value>
+  </data>
+  <data name="CheckpointProductionOnly" xml:space="preserve">
+    <value>仅生产检查点（不回退）</value>
+  </data>
+  <data name="AutomaticCheckpoints" xml:space="preserve">
+    <value>启用自动检查点</value>
+  </data>
+  <data name="CheckpointDirectory" xml:space="preserve">
+    <value>检查点文件位置</value>
+  </data>
+  <data name="CheckpointDirectoryHint" xml:space="preserve">
+    <value>已有检查点时，Hyper-V 可能限制更改此位置。</value>
+  </data>
+  <data name="SmartPaging" xml:space="preserve">
+    <value>智能分页文件位置</value>
+  </data>
+  <data name="SmartPagingHint" xml:space="preserve">
+    <value>用于动态内存虚拟机重启时的临时分页文件，不是来宾系统的交换文件。</value>
+  </data>
+  <data name="AutomaticStart" xml:space="preserve">
+    <value>自动启动操作</value>
+  </data>
+  <data name="AutomaticStartHint" xml:space="preserve">
+    <value>由 Hyper-V 在物理计算机启动时执行。</value>
+  </data>
+  <data name="StartNone" xml:space="preserve">
+    <value>不自动启动</value>
+  </data>
+  <data name="StartIfRunning" xml:space="preserve">
+    <value>如果宿主机关机时正在运行，则自动启动</value>
+  </data>
+  <data name="StartAlways" xml:space="preserve">
+    <value>始终自动启动此虚拟机</value>
+  </data>
+  <data name="StartDelay" xml:space="preserve">
+    <value>启动延迟（秒）</value>
+  </data>
+  <data name="AutomaticStop" xml:space="preserve">
+    <value>自动停止操作</value>
+  </data>
+  <data name="AutomaticStopHint" xml:space="preserve">
+    <value>由 Hyper-V 在物理计算机关机时执行。</value>
+  </data>
+  <data name="StopSave" xml:space="preserve">
+    <value>保存虚拟机状态</value>
+  </data>
+  <data name="StopTurnOff" xml:space="preserve">
+    <value>强行关闭虚拟机</value>
+  </data>
+  <data name="StopShutdown" xml:space="preserve">
+    <value>关闭来宾操作系统</value>
+  </data>
+  <data name="StopHint" xml:space="preserve">
+    <value>关闭来宾系统需要启用“操作系统关闭”集成服务；分配 GPU 分区后可能无法保存状态。</value>
+  </data>
+  <data name="Saved" xml:space="preserve">
+    <value>设置已保存。</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>正在读取 Hyper-V 设置…</value>
+  </data>
+  <data name="VmNotFound" xml:space="preserve">
+    <value>虚拟机已不存在。</value>
+  </data>
+  <data name="InvalidName" xml:space="preserve">
+    <value>请输入 1–100 个字符的名称，且不要包含控制字符。</value>
+  </data>
+  <data name="InvalidStart" xml:space="preserve">
+    <value>请选择有效的启动操作，并填写非负整数的延迟秒数。</value>
+  </data>
+  <data name="InvalidStop" xml:space="preserve">
+    <value>请选择有效的停止操作。</value>
+  </data>
+  <data name="InvalidCheckpoint" xml:space="preserve">
+    <value>请选择有效的检查点类型。</value>
+  </data>
+  <data name="InvalidDirectory" xml:space="preserve">
+    <value>请输入有效文件夹的完整绝对路径。</value>
+  </data>
+  <data name="InvalidIntegration" xml:space="preserve">
+    <value>此虚拟机的集成服务设置不可用。</value>
+  </data>
+  <data name="GpuSaveUnsupported" xml:space="preserve">
+    <value>此虚拟机已分配 GPU 分区，无法保存状态。请选择关闭来宾操作系统或强行关闭。</value>
+  </data>
+  <data name="Unsupported" xml:space="preserve">
+    <value>当前 Hyper-V 宿主机不支持此设置。</value>
+  </data>
+</root>

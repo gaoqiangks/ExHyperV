@@ -36,6 +36,19 @@
                 </StackPanel>
             </ui:Card>
             
+            <ui:Card Margin="0,0,0,8" Padding="20,16">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static properties:VmManagementText.Title}" FontSize="16"/>
+                        <TextBlock Text="{x:Static properties:VmManagementText.Hint}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                    <ui:Button Grid.Column="1" Command="{Binding GoToVmManagementSettingsCommand}" Appearance="Transparent" Padding="8,4">
+                        <ui:SymbolIcon Symbol="Settings24" FontSize="18"/>
+                    </ui:Button>
+                </Grid>
+            </ui:Card>
+
             <ui:CardExpander Margin="0,0,0,8" IsExpanded="False">
                 <ui:CardExpander.Header>
                     <Grid MinHeight="38" Margin="8,0,12,0">

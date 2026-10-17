@@ -26,8 +26,7 @@ namespace ExHyperV.Interaction
         {
             if (_consoles.TryGetValue(vmId, out var existing))
             {
-                if (existing.WindowState == WindowState.Minimized)
-                    existing.WindowState = WindowState.Normal;
+                existing.RestoreIntoView();
                 existing.Activate();
                 return;
             }

@@ -4,6 +4,13 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Shell;
+using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
+using ScrollBar = System.Windows.Controls.Primitives.ScrollBar;
+using TextBoxBase = System.Windows.Controls.Primitives.TextBoxBase;
 using Wpf.Ui.Controls;
 using ExHyperV.Services;
 using ExHyperV.Tools;
@@ -20,16 +27,21 @@ namespace ExHyperV.Views
     public partial class ConsoleWindow : FluentWindow
     {
         private const double TitleBarHeight = 42;   // 与 XAML ui:TitleBar 高度一致
+        private const double SideBarWidth = 68;
         // 全屏热键 Ctrl+Alt+Enter，交给 mstscax 自带的 HotKeyFullScreen(此 vk 传给 FullScreenHotKeyVirtualKey)。
         // 仅 ZoomLevel=100 时有效——非 100% 缩放下 mstscax 的 UI_GoFullScreen 有 zoom!=100 即 return 的 guard，热键进不去全屏(by design，接受)。
         private const int FullScreenHotKeyVk = 0x0D;
-        // 连接超时：localhost VMBus 正常连接 <1s，2s 余量足够；连不上(如不支持增强)即在此时限内放弃 → 快速回退基本会话。
-        private const int ConnectTimeoutSeconds = 2;
+        // Windows' enhanced transport can be advertised before guest logon services are ready.
+        // Allow their startup/handshake to finish instead of silently abandoning it after 2s.
+        private const int EnhancedConnectTimeoutSeconds = 30;
+        private const int BasicConnectTimeoutSeconds = 5;
         // 增强会话：画面四周留出的可抓取缩放边（DIP）。mstscax 画面是 airspace、会盖住窗口边缘的缩放热区，
         // 留这点边让边缘是 WPF(RdpArea)、能抓住拖动缩放。值越小越窄，但太小会抓不到缩放热区。
         private const double EnhancedResizeBorder = 3;
 
         private readonly ConsoleViewModel _vm;
+        private readonly string _toolbarPosition;
+        private bool IsVerticalToolbar => _toolbarPosition is "Left" or "Right";
         private bool _isFullScreen;               // 供 WM_GETMINMAXINFO 判断最大化铺满显示器还是工作区
         private bool _syncingFs;                  // 防止 mstscax→VM→mstscax 全屏状态回灌
         private bool _weInitiatedDisconnect;      // 标记我方主动断开(模式切换/VM 停止)，以免被当作"非预期断开"
@@ -40,6 +52,15 @@ namespace ExHyperV.Views
         private int _moveSizeStartWidth;           // 进入移动/缩放循环时的窗口物理宽度；退出时据此区分纯移动与真实改大小
         private int _moveSizeStartHeight;
         private bool _windowFollowsResolution;    // 下拉改分辨率后置位：待画面真的变到新分辨率(RemoteSizeChanged)再让窗口跟随确认值；拖动会清掉(窗口归用户掌控)
+        private bool _explicitResolutionSelected;
+        private bool _autoFitDisplay;
+        private int _displayResizeAttempts;
+        private int _confirmedRemoteWidth;
+        private int _confirmedRemoteHeight;
+        private bool _forceDisplayResize;
+        private bool _enhancedLoginCompleted;
+        private const int MaximumDisplayResizeAttempts = 8;
+        private readonly System.Windows.Threading.DispatcherTimer _displayResizeTimer;
         private int _postLoginWidth;               // 登录界面可能忽略动态分辨率；登录完成后重试此目标
         private int _postLoginHeight;
         private int _scaleReconnectWidth;
@@ -49,12 +70,25 @@ namespace ExHyperV.Views
         private System.Windows.Media.Brush? _origBackground;      // 全屏前的窗口底色，退出恢复
         private bool _closing;                                    // 用户经连接栏关闭：抑制断开后的自动重连（避免"复活"）
         private bool _topHookAdded;                                // 顶边缩放钩子是否已在 ContentRendered 注册（只挂一次）
+        private bool _initialLayoutReady;
+        private bool _boundsCheckQueued;
+        private bool _applyingWindowBounds;
+        private readonly double _minimumWindowWidth;
+        private readonly double _minimumWindowHeight;
 
         public ConsoleWindow(string vmId, string vmName)
         {
+            _toolbarPosition = AutoConnectOptions.Load().ConsoleToolbarPosition;
             _vm = new ConsoleViewModel(vmId, vmName);
             this.DataContext = _vm;
             InitializeComponent();
+            _minimumWindowWidth = MinWidth;
+            _minimumWindowHeight = MinHeight;
+            _displayResizeTimer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
+            { Interval = TimeSpan.FromMilliseconds(150) };
+            _displayResizeTimer.Tick += OnDisplayResizeTick;
+            ConfigureToolbarPlacement();
             var connectionPresence = ConnectionPresence.Register();
             Closed += (_, _) => connectionPresence.Dispose();
             ExHyperV.Services.PasswordlessLogin.Attach(this, RdpHost, vmName);
@@ -75,17 +109,20 @@ namespace ExHyperV.Views
             _vm.ResolutionChangeRequested += (w, h) =>
             {
                 if (!_vm.IsEnhancedMode || w <= 0 || h <= 0) return;
+                _autoFitDisplay = false;
+                _displayResizeTimer.Stop();
+                _explicitResolutionSelected = true;
                 _postLoginWidth = w;
                 _postLoginHeight = h;
                 SettingsService.SaveDefaultConsoleResolution(w, h); // 用户明确选择，立即保存；不等待来宾是否接受
-                _windowFollowsResolution = true;
-                RdpHost.Resize(w, h, GetDpiScale(), GetSessionDesktopScale());
+                ApplyExplicitResolution(w, h);
             };
 
             // RDP 承载控件事件（原生事件，取代旧实现的 20ms 轮询）
             RdpHost.Connected += () => Dispatcher.BeginInvoke(new Action(() =>
             {
                 _enhancedConnecting = false;   // 已连上（增强成功，或本就是基本）
+                if (_vm.IsEnhancedMode) _vm.ConfirmEnhancedSessionConnected();
                 // 基本会话连上即应用当前缩放档（不能依赖 RemoteSizeChange——同分辨率重连时它不触发）。
                 // 增强会话连接后不得修改 ZoomLevel；它与动态分辨率同时启用会导致画面尺寸异常。
                 if (!_vm.IsEnhancedMode) ApplyBasicZoom();
@@ -94,22 +131,32 @@ namespace ExHyperV.Views
                     LayoutRdpHost();              // 增强复用基本分辨率时不触发 RemoteSizeChange，这里主动按当前分辨率把画面居中
                     EnsureEnhancedResizeBorder(); // 放大窗口露出可抓取缩放边
                     // 布局完成前禁止按中间窗口尺寸协商分辨率。
-                    Dispatcher.BeginInvoke(new Action(() => _pendingEnhancedInset = false),
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        _pendingEnhancedInset = false;
+                        if (!_explicitResolutionSelected) QueueDisplayFit(force: true);
+                    }),
                         System.Windows.Threading.DispatcherPriority.Background);
                 }
                 else _pendingEnhancedInset = false;
+                if (!_explicitResolutionSelected) QueueDisplayFit(force: true);
             }));
             RdpHost.LoginCompleted += () => Dispatcher.BeginInvoke(new Action(() =>
             {
+                _enhancedLoginCompleted = true;
                 if (!_vm.IsEnhancedMode) return;
-                int width = _postLoginWidth > 0 ? _postLoginWidth : _vm.InitialEnhancedWidth;
-                int height = _postLoginHeight > 0 ? _postLoginHeight : _vm.InitialEnhancedHeight;
-                if (width <= 0 || height <= 0) return;
-                _windowFollowsResolution = true;
-                RdpHost.Resize(width, height, GetDpiScale(), GetSessionDesktopScale());
+                if (_explicitResolutionSelected && _postLoginWidth > 0 && _postLoginHeight > 0)
+                    ApplyExplicitResolution(_postLoginWidth, _postLoginHeight);
+                else QueueDisplayFit(force: true);
             }));
             RdpHost.Disconnected += reason => Dispatcher.BeginInvoke(new Action(() =>
             {
+                AutoConnectLog.Write($"Console disconnected: {_vm.VmName}; enhanced={_vm.IsEnhancedMode}; connecting={_enhancedConnecting}; requested={_weInitiatedDisconnect}; reason={reason}");
+                _displayResizeTimer.Stop();
+                _autoFitDisplay = false;
+                _windowFollowsResolution = false;
+                _confirmedRemoteWidth = _confirmedRemoteHeight = 0;
+                _enhancedLoginCompleted = false;
                 if (_weInitiatedDisconnect)
                 {
                     _weInitiatedDisconnect = false;
@@ -139,16 +186,19 @@ namespace ExHyperV.Views
             }));
             RdpHost.FatalError += code => Dispatcher.BeginInvoke(new Action(() =>
             {
+                AutoConnectLog.Write($"RDP fatal error: {_vm.VmName}; code={code}");
                 System.Diagnostics.Debug.WriteLine($"[Rdp] 致命错误 code={code}");
             }));
             RdpHost.RemoteSizeChanged += (w, h) => Dispatcher.BeginInvoke(new Action(() =>
             {
+                _confirmedRemoteWidth = w;
+                _confirmedRemoteHeight = h;
                 _vm.CurrentWidth = w; _vm.CurrentHeight = h;
-                if (w == _postLoginWidth && h == _postLoginHeight)
-                    _postLoginWidth = _postLoginHeight = 0;
+                if (_vm.IsEnhancedMode)
+                    AutoConnectLog.Write($"Enhanced display reported: {_vm.VmName}; {w}x{h}; state={WindowState}");
                 // 仅在远端确认分辨率后调整增强会话窗口尺寸。
                 // 拖动发起的协商不在此跟随(标记已在 WM_ENTERSIZEMOVE 清掉)，窗口仍由用户掌控。
-                if (_windowFollowsResolution)
+                if (_windowFollowsResolution && w == _postLoginWidth && h == _postLoginHeight)
                 {
                     if (_vm.IsEnhancedMode && !_vm.IsFullScreen && this.WindowState == WindowState.Normal)
                         FitToResolution(w, h);
@@ -157,6 +207,10 @@ namespace ExHyperV.Views
                         System.Windows.Threading.DispatcherPriority.Background);
                 }
                 LayoutRdpHost();
+                // A late login/connection response can report the old resolution after our request.
+                // Keep one bounded negotiation alive until the guest confirms the current viewport.
+                if (_autoFitDisplay)
+                    StartDisplayResizeTimer();
             }));
             RdpHost.FullScreenRequested += fs => Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -170,9 +224,202 @@ namespace ExHyperV.Views
             RdpArea.SizeChanged += (s, e) =>
             {
                 LayoutRdpHost();
-                if (_vm.IsEnhancedMode && !_userResizing && !_windowFollowsResolution && !_pendingEnhancedInset && _vm.CurrentWidth > 0) NegotiateResolution();
+                if (_vm.IsEnhancedMode && !_userResizing && !_windowFollowsResolution
+                    && !_explicitResolutionSelected && !_pendingEnhancedInset && !_applyingWindowBounds)
+                    QueueDisplayFit();
+            };
+            StateChanged += (_, _) =>
+            {
+                QueueWindowBoundsCheck();
+                if (WindowState != WindowState.Minimized) QueueDisplayFit();
+                else _displayResizeTimer.Stop();
+            };
+            DpiChanged += (_, _) => { QueueWindowBoundsCheck(); QueueDisplayFit(); };
+            Activated += (_, _) => QueueWindowBoundsCheck();
+        }
+
+        private void ApplyExplicitResolution(int width, int height)
+        {
+            // No size-change event is raised when the guest already has this size.
+            // Do not leave the window-follow guard set forever in that case.
+            bool alreadyConfirmed = width == _confirmedRemoteWidth && height == _confirmedRemoteHeight;
+            _windowFollowsResolution = true;
+            if (alreadyConfirmed)
+            {
+                if (WindowState == WindowState.Normal) FitToResolution(width, height);
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                    new Action(() => _windowFollowsResolution = false));
+            }
+            RdpHost.Resize(width, height, GetDpiScale(), GetSessionDesktopScale());
+        }
+
+        private void QueueDisplayFit(bool force = false)
+        {
+            if (_closing || !_vm.IsEnhancedMode || WindowState == WindowState.Minimized) return;
+            _autoFitDisplay = true;
+            _explicitResolutionSelected = false;
+            _postLoginWidth = _postLoginHeight = 0;
+            _windowFollowsResolution = false;
+            _displayResizeAttempts = 0;
+            _forceDisplayResize |= force;
+            StartDisplayResizeTimer();
+        }
+
+        private void StartDisplayResizeTimer()
+        {
+            _displayResizeTimer.Stop();
+            _displayResizeTimer.Interval = TimeSpan.FromMilliseconds(_displayResizeAttempts == 0 ? 150 : 500);
+            _displayResizeTimer.Start();
+        }
+
+        private void OnDisplayResizeTick(object? sender, EventArgs e)
+        {
+            _displayResizeTimer.Stop();
+            if (_closing || !_autoFitDisplay || !_vm.IsEnhancedMode || RdpHost.ConnectionState != 1
+                || WindowState == WindowState.Minimized || _userResizing || _pendingEnhancedInset)
+                return;
+            // Windows' sign-in screen can reject display-control requests. The login event
+            // starts a fresh negotiation; Linux guests can already negotiate after Connected.
+            if (!_enhancedLoginCompleted && !EnhancedSessionCredentials.IsConfigured(_vm.VmName)) return;
+            if (!TryGetDisplayTarget(out int width, out int height)) return;
+            if (!_forceDisplayResize && _confirmedRemoteWidth == width && _confirmedRemoteHeight == height)
+            {
+                LayoutRdpHost();
+                AutoConnectLog.Write($"Enhanced display fitted: {_vm.VmName}; {width}x{height}; state={WindowState}; toolbar={_toolbarPosition}");
+                return;
+            }
+            if (_displayResizeAttempts >= MaximumDisplayResizeAttempts) return;
+            _forceDisplayResize = false;
+            ++_displayResizeAttempts;
+            AutoConnectLog.Write($"Enhanced display fit request: {_vm.VmName}; {width}x{height}; attempt={_displayResizeAttempts}; remote={_vm.CurrentWidth}x{_vm.CurrentHeight}");
+            RdpHost.Resize(width, height, GetDpiScale(), GetSessionDesktopScale());
+            if (_displayResizeAttempts < MaximumDisplayResizeAttempts) StartDisplayResizeTimer();
+        }
+
+        private void ConfigureToolbarPlacement()
+        {
+            foreach (var dropdown in new[] { PowerMenuButton, ResolutionButton, DesktopScaleButton, ZoomButton, SessionModeButton })
+            {
+                if (dropdown.Flyout is not ContextMenu menu) continue;
+                // A flyout owns a separate visual tree; never rely on walking back to the window.
+                menu.SetBinding(DataContextProperty, new Binding(nameof(DataContext)) { Source = dropdown });
+                if (_toolbarPosition != "Top") menu.Opened += (_, _) => menu.Placement = _toolbarPosition switch
+                {
+                    "Left" => PlacementMode.Right,
+                    "Right" => PlacementMode.Left,
+                    _ => PlacementMode.Top
+                };
+            }
+            if (_toolbarPosition == "Top") return;
+
+            // Reuse the same commands and menus, rather than maintaining a second toolbar.
+            // Remove the TitleBar before Loaded so its native top-caption hit testing is never installed.
+            TopTitleBar.Header = null;
+            ConsoleLayout.Children.Remove(TopTitleBar);
+            SideToolbarHost.Content = ToolbarRoot;
+            if (IsVerticalToolbar)
+            {
+                DockPanel.SetDock(SideBar, _toolbarPosition == "Left" ? Dock.Left : Dock.Right);
+                SideBar.BorderThickness = _toolbarPosition == "Left" ? new Thickness(0, 0, 1, 0) : new Thickness(1, 0, 0, 0);
+                ToolbarRoot.Margin = new Thickness(0);
+                ConsoleToolbar.Orientation = Orientation.Vertical;
+                ConsoleToolbar.VerticalAlignment = VerticalAlignment.Top;
+                VmNameText.Width = 52;
+                VmNameText.Margin = new Thickness(0, 4, 0, 10);
+                VmNameText.FontSize = 10;
+                VmNameText.TextWrapping = TextWrapping.Wrap;
+                VmNameText.TextAlignment = TextAlignment.Center;
+                VmNameText.ToolTip = _vm.VmName;
+                PowerControls.Width = 52;
+                PowerControls.Margin = new Thickness(0, 4, 0, 0);
+                StartButton.Width = 52;
+                PowerMenuButton.Width = 16;
+                PowerMenuButton.Padding = new Thickness(0);
+
+                foreach (var child in ConsoleToolbar.Children)
+                {
+                    if (child is not System.Windows.Controls.Control control) continue;
+                    control.Width = 52;
+                    control.Height = 38;
+                    control.Margin = new Thickness(0, 6, 0, 0);
+                    control.Padding = new Thickness(0);
+                }
+                ConfigureCompactMenu(ResolutionButton, nameof(ConsoleViewModel.SelectedResolution), "分辨率");
+                ResolutionButton.ToolTip = Properties.ConsoleSessionText.ResolutionHint;
+                ConfigureCompactMenu(DesktopScaleButton, nameof(ConsoleViewModel.SelectedDesktopScaleLabel), "桌面缩放");
+                ConfigureCompactMenu(ZoomButton, nameof(ConsoleViewModel.SelectedZoom), "画面缩放");
+                ConfigureCompactMenu(SessionModeButton, nameof(ConsoleViewModel.SelectedSessionMode), "会话模式");
+                // Keep an explicit label in the narrow toolbar; the monitor above controls resolution.
+                SessionModeButton.Icon = null;
+                SessionModeButton.Content = new StackPanel
+                {
+                    Children =
+                    {
+                        new SymbolIcon(SymbolRegular.ArrowSync16) { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
+                        new System.Windows.Controls.TextBlock { Text = Properties.ConsoleSessionText.Mode, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center }
+                    }
+                };
+            }
+            else
+            {
+                DockPanel.SetDock(SideBar, Dock.Bottom);
+                SideBar.Width = double.NaN;
+                SideBar.Height = TitleBarHeight;
+                SideBar.BorderThickness = new Thickness(0, 1, 0, 0);
+                DockPanel.SetDock(ToolbarDragHandle, Dock.Left);
+                ToolbarDragHandle.Width = 20;
+                ToolbarDragHandle.Height = double.NaN;
+                ToolbarDragHandle.Margin = new Thickness(4, 0, 0, 0);
+                DockPanel.SetDock(SideWindowButtons, Dock.Right);
+                SideWindowButtons.Orientation = Orientation.Horizontal;
+                SideWindowButtons.Margin = new Thickness(4, 0, 8, 0);
+                foreach (System.Windows.Controls.Control button in SideWindowButtons.Children)
+                {
+                    button.Width = 42;
+                    button.Height = 32;
+                    button.Margin = new Thickness(2, 0, 2, 0);
+                    button.VerticalAlignment = VerticalAlignment.Center;
+                }
+                SideToolbarHost.Margin = new Thickness(0);
+                ToolbarScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                ToolbarScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden;
+                ToolbarScroll.PanningMode = PanningMode.HorizontalOnly;
+                ToolbarScroll.PreviewMouseWheel += (_, e) =>
+                {
+                    if (ToolbarScroll.ScrollableWidth <= 0) return;
+                    ToolbarScroll.ScrollToHorizontalOffset(ToolbarScroll.HorizontalOffset - e.Delta);
+                    e.Handled = true;
+                };
+            }
+            SideBar.SetBinding(VisibilityProperty, new Binding(nameof(ConsoleViewModel.IsFullScreen))
+            {
+                Converter = (IValueConverter)FindResource("BoolToVis"), ConverterParameter = "Invert"
+            });
+            StateChanged += (_, _) => SideMaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+            Loaded += (_, _) =>
+            {
+                var chrome = WindowChrome.GetWindowChrome(this);
+                if (chrome == null || chrome.IsFrozen) return;
+                // FluentWindow owns this Freezable; replacing it after Loaded can invalidate its context.
+                chrome.SetCurrentValue(WindowChrome.CaptionHeightProperty, 0d);
+                chrome.SetCurrentValue(WindowChrome.UseAeroCaptionButtonsProperty, false);
             };
         }
+
+        private static void ConfigureCompactMenu(DropDownButton button, string property, string label)
+        {
+            button.Content = null;
+            button.SetBinding(ToolTipProperty, new Binding(property) { StringFormat = label + "：{0}" });
+            System.Windows.Automation.AutomationProperties.SetName(button, label);
+        }
+
+        private void OnMinimizeClick(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+        private void OnMaximizeClick(object sender, RoutedEventArgs e)
+        {
+            if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+            else SystemCommands.MaximizeWindow(this);
+        }
+        private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
         // HWND 就绪后挂钩 WndProc（全屏铺满显示器 + 拖动结束协商分辨率）。
         protected override void OnSourceInitialized(EventArgs e)
@@ -181,20 +428,39 @@ namespace ExHyperV.Views
             HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
         }
 
-        // 顶边缩放钩子在 ContentRendered（晚于 TitleBar 的 Loaded）注册 → 处于 FIFO 末位、末位 handled 取胜，
-        // 才能用 HTTOP 压过 TitleBar 对顶部空白区返回的 HTCAPTION（日志证实早注册会被 TitleBar 覆盖）。
+        // Register after Loaded so chrome hit testing wins over WindowChrome/TitleBar hooks.
         protected override void OnContentRendered(EventArgs e)
         {
             base.OnContentRendered(e);
             if (_topHookAdded) return;
             _topHookAdded = true;
             HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(TopResizeHook);
+            AutoConnectLog.Write($"Console toolbar position={_toolbarPosition}; window={ActualWidth:F0}x{ActualHeight:F0}; content={RdpArea.ActualWidth:F0}x{RdpArea.ActualHeight:F0}");
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (_closing) return;
+                // Startup WindowState is applied by ContentRendered subscribers. Wait until
+                // that layout settles before sending the very first RDP desktop dimensions.
+                EnsureWindowInWorkArea();
+                _initialLayoutReady = true;
+                SyncConnection(forceReconnect: false);
+                QueueDisplayFit();
+            }));
         }
 
-        // 增强 + 窗口化时，窗口顶部 TopResizeGrip 像素内 → HTTOP，使顶边可上下拉动改分辨率（底边被任务栏盖住时的退路）。
+        // The relocated toolbar needs a real non-client caption region. Windows then handles
+        // dragging a maximized window back to normal, double clicks and snap consistently.
         private IntPtr TopResizeHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == WM_NCHITTEST && _vm.IsEnhancedMode && !_vm.IsFullScreen)
+            if (msg == WM_NCHITTEST && !_vm.IsFullScreen && _toolbarPosition != "Top"
+                && IsToolbarDragPoint(new System.Windows.Point(
+                    (short)(lParam.ToInt64() & 0xFFFF), (short)((lParam.ToInt64() >> 16) & 0xFFFF))))
+            {
+                handled = true;
+                return (IntPtr)HTCAPTION;
+            }
+            if (msg == WM_NCHITTEST && _vm.IsEnhancedMode && !_vm.IsFullScreen
+                && WindowState == WindowState.Normal && _toolbarPosition == "Top")
             {
                 int y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
                 if (GetWindowRect(hwnd, out RECT r) && y >= r.Top && y < r.Top + TopResizeGrip)
@@ -204,6 +470,34 @@ namespace ExHyperV.Views
                 }
             }
             return IntPtr.Zero;
+        }
+
+        private bool IsToolbarDragPoint(System.Windows.Point screenPoint)
+        {
+            if (_closing || !SideBar.IsVisible || SideBar.ActualWidth <= 0 || SideBar.ActualHeight <= 0)
+                return false;
+            if (WindowState == WindowState.Normal)
+            {
+                var windowPoint = PointFromScreen(screenPoint);
+                var resize = WindowChrome.GetWindowChrome(this)?.ResizeBorderThickness
+                    ?? SystemParameters.WindowResizeBorderThickness;
+                if (windowPoint.X < resize.Left || windowPoint.Y < resize.Top
+                    || windowPoint.X >= ActualWidth - resize.Right || windowPoint.Y >= ActualHeight - resize.Bottom)
+                    return false;
+            }
+            var point = SideBar.PointFromScreen(screenPoint);
+            if (!new Rect(0, 0, SideBar.ActualWidth, SideBar.ActualHeight).Contains(point))
+                return false;
+            // Visual hit testing includes disabled buttons: even those must not become drag handles.
+            var hit = System.Windows.Media.VisualTreeHelper.HitTest(SideBar, point)?.VisualHit;
+            for (DependencyObject? current = hit; current != null; current = System.Windows.Media.VisualTreeHelper.GetParent(current))
+            {
+                if (current is ButtonBase or Thumb or ScrollBar
+                    or Selector or TextBoxBase)
+                    return false;
+                if (ReferenceEquals(current, SideBar)) return true;
+            }
+            return false;
         }
 
         // 状态轮询回调：让连接跟随 VM 运行状态。VM 停止时保持窗口等待，VM 一恢复即重连——复用既有 2s 轮询，无需额外定时器。
@@ -224,6 +518,8 @@ namespace ExHyperV.Views
                     break;
 
                 case nameof(ConsoleViewModel.IsEnhancedMode):
+                    _displayResizeTimer.Stop();
+                    _autoFitDisplay = false;
                     // 切换前仍处于基本会话，此时重置 ZoomLevel 不会影响增强会话连接。
                     // 必须早于进入增强——增强靠动态分辨率，不能带基本会话残留的缩放；且一旦进了增强再 mid-session 设
                     // ZoomLevel 与动态分辨率互斥，只能在断开重连前重置。
@@ -258,7 +554,7 @@ namespace ExHyperV.Views
         // 让 RDP 连接与 VM 运行状态一致。forceReconnect=true 时即使已连也先断（会话模式切换换 PCB 用）。
         private void SyncConnection(bool forceReconnect)
         {
-            if (_closing) return;   // 正在关闭：不再重连（避免连接栏关闭后被轮询重连"复活"）
+            if (_closing || !_initialLayoutReady) return;
             if (forceReconnect && RdpHost.ConnectionState != 0)
             {
                 // 已连接要换 PCB（模式切换）：先断，等 OnDisconnected 断完再连——立即连会被 mstscax 拒、拖到轮询。
@@ -272,16 +568,20 @@ namespace ExHyperV.Views
             {
                 if (RdpHost.ConnectionState == 0)   // 该连而未连（force+已连的已在上面断开并挂起重连）
                 {
+                    _confirmedRemoteWidth = _confirmedRemoteHeight = 0;
+                    _enhancedLoginCompleted = false;
                     _enhancedConnecting = _vm.IsEnhancedMode;   // 记下本次是否在尝试增强（失败则回退基本）
                     uint desktopScale = GetSessionDesktopScale();
                     int initialWidth = _vm.IsEnhancedMode ? (_scaleReconnectWidth > 0 ? _scaleReconnectWidth : _vm.InitialEnhancedWidth) : _vm.CurrentWidth;
                     int initialHeight = _vm.IsEnhancedMode ? (_scaleReconnectHeight > 0 ? _scaleReconnectHeight : _vm.InitialEnhancedHeight) : _vm.CurrentHeight;
                     _scaleReconnectWidth = _scaleReconnectHeight = 0;
+                    if (_vm.IsEnhancedMode && _explicitResolutionSelected && _postLoginWidth > 0 && _postLoginHeight > 0)
+                        (initialWidth, initialHeight) = (_postLoginWidth, _postLoginHeight);
+                    else if (_vm.IsEnhancedMode && (_vm.IsFullScreen || WindowState == WindowState.Maximized)
+                        && TryGetDisplayTarget(out int viewportWidth, out int viewportHeight))
+                        (initialWidth, initialHeight) = (viewportWidth, viewportHeight);
                     if (_vm.IsEnhancedMode)
-                    {
-                        _postLoginWidth = initialWidth;
-                        _postLoginHeight = initialHeight;
-                    }
+                        AutoConnectLog.Write($"Enhanced display initial request: {_vm.VmName}; {initialWidth}x{initialHeight}; state={WindowState}");
                     RdpHost.Connect(BuildHyperVSettings(_vm.VmId, _vm.VmName, _vm.IsEnhancedMode, initialWidth, initialHeight, desktopScale));
                 }
             }
@@ -313,7 +613,7 @@ namespace ExHyperV.Views
                 RedirectClipboard = enhanced && options.RedirectClipboard,
                 RedirectDrives = enhanced && options.RedirectDrives,
                 FullScreenHotKeyVirtualKey = FullScreenHotKeyVk,   // mstscax 自带全屏热键(Ctrl+Alt+Enter)；非 100% 缩放下其 guard 会挡住、无热键全屏(接受)
-                ConnectionTimeoutSeconds = ConnectTimeoutSeconds,
+                ConnectionTimeoutSeconds = enhanced ? EnhancedConnectTimeoutSeconds : BasicConnectTimeoutSeconds,
                 DesktopWidth = enhanced ? reuseWidth : 0,
                 DesktopHeight = enhanced ? reuseHeight : 0,
                 DesktopScaleFactor = enhanced ? desktopScale : 100,
@@ -335,6 +635,7 @@ namespace ExHyperV.Views
                 _ => WindowState.Normal
             };
             ExHyperV.Services.AutoConnectLog.Write($"Window state verified: {WindowState}; full-screen={_vm.IsFullScreen}");
+            QueueDisplayFit();
         }
         private void EnterFullScreen()
         {
@@ -404,12 +705,7 @@ namespace ExHyperV.Views
             {
                 SetWindowForRdpArea(scrW, scrH);
             }
-            // 高缩放下将窗口位置限制在工作区内，确保标题栏和边角可见。
-            var area = SystemParameters.WorkArea;
-            if (this.Left + this.Width > area.Right) this.Left = Math.Max(area.Left, area.Right - this.Width);
-            if (this.Top + this.Height > area.Bottom) this.Top = Math.Max(area.Top, area.Bottom - this.Height);
-            if (this.Left < area.Left) this.Left = area.Left;
-            if (this.Top < area.Top) this.Top = area.Top;
+            QueueWindowBoundsCheck();
         }
 
         /// <summary>摆放 RDP 承载控件：全屏/增强铺满或贴合；基本会话按所选缩放档把画面缩放居中。
@@ -561,31 +857,98 @@ namespace ExHyperV.Views
             }
 
             // 首次布局完成后再使用远端尺寸校正。
-            return new Size(0, TitleBarHeight);
+            if (_vm.IsFullScreen) return new Size(0, 0);
+            return IsVerticalToolbar ? new Size(SideBarWidth, 0) : new Size(0, TitleBarHeight);
         }
 
         /// <summary>按 RdpArea 的目标尺寸反推窗口尺寸，自动适配不同系统上的窗口外壳宽度。</summary>
         private void SetWindowForRdpArea(double targetWidth, double targetHeight)
         {
             var overhead = GetWindowOverhead();
-            this.Width = targetWidth + overhead.Width;
-            this.Height = targetHeight + overhead.Height;
+            double width = targetWidth + overhead.Width, height = targetHeight + overhead.Height;
+            if (TryGetMonitorWorkArea(out var workArea))
+            {
+                double dpi = GetDpiScale();
+                double availableWidth = workArea.Width / dpi, availableHeight = workArea.Height / dpi;
+                MinWidth = Math.Min(_minimumWindowWidth, availableWidth);
+                MinHeight = Math.Min(_minimumWindowHeight, availableHeight);
+                width = Math.Min(width, availableWidth);
+                height = Math.Min(height, availableHeight);
+            }
+            this.Width = width;
+            this.Height = height;
+            QueueWindowBoundsCheck();
+        }
+
+        // Reactivating an existing console must also recover an inaccessible side toolbar.
+        public void RestoreIntoView()
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            EnsureWindowInWorkArea();
+            QueueWindowBoundsCheck();
+        }
+
+        private bool TryGetMonitorWorkArea(out System.Drawing.Rectangle area)
+        {
+            area = default;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return false;
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info)) return false;
+            area = System.Drawing.Rectangle.FromLTRB(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom);
+            return area.Width > 0 && area.Height > 0;
+        }
+
+        private void QueueWindowBoundsCheck()
+        {
+            if (_closing || _boundsCheckQueued || _vm.IsFullScreen || WindowState != WindowState.Normal) return;
+            _boundsCheckQueued = true;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                _boundsCheckQueued = false;
+                EnsureWindowInWorkArea();
+            }));
+        }
+
+        private void EnsureWindowInWorkArea()
+        {
+            if (_closing || _applyingWindowBounds || _userResizing || _vm.IsFullScreen || WindowState != WindowState.Normal) return;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (!GetWindowRect(hwnd, out RECT rect) || !TryGetMonitorWorkArea(out var workArea)) return;
+            var current = System.Drawing.Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            var target = ConsoleWindowBounds.Constrain(current, workArea);
+            if (target == current) return;
+            _applyingWindowBounds = true;
+            try
+            {
+                double dpi = GetDpiScale();
+                MinWidth = Math.Min(_minimumWindowWidth, workArea.Width / dpi);
+                MinHeight = Math.Min(_minimumWindowHeight, workArea.Height / dpi);
+                Width = target.Width / dpi;
+                Height = target.Height / dpi;
+                // Keep physical monitor coordinates out of WPF's virtualized Left/Top space.
+                // This remains correct on monitors with different DPI and negative origins.
+                if (SetWindowPos(hwnd, IntPtr.Zero, target.Left, target.Top, target.Width, target.Height, 0x0014))
+                    AutoConnectLog.Write($"Console window recovered into work area: {_vm.VmName}; {target}; toolbar={_toolbarPosition}");
+            }
+            finally { _applyingWindowBounds = false; }
+            if (!_explicitResolutionSelected) QueueDisplayFit();
         }
 
         /// <summary>增强会话：用户结束拖动窗口（WM_EXITSIZEMOVE）后，把当前画面区像素协商给 VM（桌面跟随窗口尺寸）。</summary>
-        private void NegotiateResolution()
+        private bool TryGetDisplayTarget(out int px, out int py)
         {
+            px = py = 0;
             var src = PresentationSource.FromVisual(this);
-            if (src?.CompositionTarget == null) return;
+            if (src?.CompositionTarget == null || RdpArea.ActualWidth <= 0 || RdpArea.ActualHeight <= 0) return false;
             double dpiX = GetDpiScale(), dpiY = dpiX;   // Win32 取真实 DPI，避开 TransformToDevice 首帧滞后成 100%
             // 全屏/最大化：画面占满 RdpArea、无可抓取边；普通窗口化：左右各留一条、底部留一条（顶部贴标题栏、无上边）。
             bool filled = _vm.IsFullScreen || this.WindowState == WindowState.Maximized;
             double bw = filled ? 0 : EnhancedResizeBorder;
-            int px = (int)Math.Round((RdpArea.ActualWidth - 2 * bw) * dpiX);
-            int py = (int)Math.Round((RdpArea.ActualHeight - bw) * dpiY);
-            bool willResize = px >= 200 && py >= 200 && (px != _vm.CurrentWidth || py != _vm.CurrentHeight);
-            if (willResize)
-                RdpHost.Resize(px, py, GetDpiScale(), GetSessionDesktopScale());
+            px = (int)Math.Round((RdpArea.ActualWidth - 2 * bw) * dpiX);
+            py = (int)Math.Round((RdpArea.ActualHeight - bw) * dpiY);
+            return px >= 200 && py >= 200;
         }
 
         // ── CAD / 关闭 ──────────────────────────────────────────────────────
@@ -598,8 +961,9 @@ namespace ExHyperV.Views
         // 标题栏虚拟机名称：文字会接住鼠标，需显式 DragMove 才能拖窗口（穿透在 ui:TitleBar 里拖不动，对齐 1.4.3）。
         private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ChangedButton == MouseButton.Left)
-                this.DragMove();
+            if (e.ChangedButton != MouseButton.Left) return;
+            if (e.ClickCount == 2) OnMaximizeClick(sender, e);
+            else this.DragMove();
         }
 
         // 三重限定只吞"关闭中、Window 抛的 VerifyNotClosing/InternalClose"这一冗余关闭异常，不误伤其它。
@@ -627,6 +991,7 @@ namespace ExHyperV.Views
             // 避免登录界面的固定分辨率或来宾拒绝请求后再次污染偏好。
             _rdpTornDown = true;
             _closing = true;            // 抑制断开后的自动重连
+            _displayResizeTimer.Stop();
             RdpHost.ShutdownAndDispose();
         }
 
@@ -639,6 +1004,8 @@ namespace ExHyperV.Views
             _vm.PropertyChanged -= OnViewModelPropertyChanged;
             _vm.Polled -= OnVmPolled;
             _vm.Dispose();
+            _displayResizeTimer.Stop();
+            _displayResizeTimer.Tick -= OnDisplayResizeTick;
 
             // 延到 idle 再摘钩：兜住关闭 Invoke 排在 OnClosed 之后才跑的时序，之后解绑不泄漏本窗口。
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
@@ -649,10 +1016,13 @@ namespace ExHyperV.Views
         private const int WM_GETMINMAXINFO = 0x0024;
         private const int WM_NCHITTEST = 0x0084;
         private const int HTCLIENT = 1;
+        private const int HTCAPTION = 2;
         private const int HTTOP = 12;
         private const int TopResizeGrip = 10;   // 顶边缩放热区高度（物理像素）
         private const int WM_ENTERSIZEMOVE = 0x0231;
         private const int WM_EXITSIZEMOVE = 0x0232;
+        private const int WM_DISPLAYCHANGE = 0x007E;
+        private const int WM_SETTINGCHANGE = 0x001A;
         private const int MONITOR_DEFAULTTONEAREST = 0x00000002;
         private const int DWMWA_BORDER_COLOR = 34;          // Win11：窗口边框颜色（全屏置 None 去白边）
         private const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;   // 不画边框
@@ -660,6 +1030,8 @@ namespace ExHyperV.Views
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam.ToInt64() == 0x002F))
+                QueueWindowBoundsCheck();
             if (msg == WM_NCHITTEST && _vm.IsFullScreen)
             {
                 handled = true;
@@ -691,6 +1063,7 @@ namespace ExHyperV.Views
             else if (msg == WM_ENTERSIZEMOVE)
             {
                 _userResizing = true;    // 用户开始移动或改大小：期间不在 SizeChanged 协商
+                _displayResizeTimer.Stop();
                 if (GetWindowRect(hwnd, out RECT startRect))
                 {
                     _moveSizeStartWidth = startRect.Right - startRect.Left;
@@ -705,12 +1078,15 @@ namespace ExHyperV.Views
             else if (msg == WM_EXITSIZEMOVE)
             {
                 _userResizing = false;
+                QueueWindowBoundsCheck();
                 bool sizeChanged = GetWindowRect(hwnd, out RECT endRect)
                     && (_moveSizeStartWidth <= 0
                         || endRect.Right - endRect.Left != _moveSizeStartWidth
                         || endRect.Bottom - endRect.Top != _moveSizeStartHeight);
                 if (sizeChanged && _vm.IsEnhancedMode && !_vm.IsFullScreen)
-                    NegotiateResolution();   // 只有真的拖边改大小才协商；拖标题栏移动窗口不改变分辨率
+                    QueueDisplayFit();   // 只有真的拖边改大小才协商；拖标题栏移动窗口不改变分辨率
+                else if (_autoFitDisplay && _displayResizeAttempts < MaximumDisplayResizeAttempts)
+                    StartDisplayResizeTimer();
                 _moveSizeStartWidth = _moveSizeStartHeight = 0;
             }
             return IntPtr.Zero;
@@ -732,6 +1108,7 @@ namespace ExHyperV.Views
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);   // 顶边缩放命中测试取窗口顶坐标
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref uint value, int size);
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
         // GetDpiForWindow 可在首帧取得窗口所在显示器的 DPI，避免 WPF 转换矩阵尚未更新。
         private double GetDpiScale()

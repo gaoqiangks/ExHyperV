@@ -20,17 +20,17 @@
     <ui:FluentWindow.Resources>
     </ui:FluentWindow.Resources>
 
-    <DockPanel LastChildFill="True" Background="Transparent">
+    <DockPanel x:Name="ConsoleLayout" LastChildFill="True" Background="Transparent">
         <!-- 全屏时，Visibility 会变为 Collapsed，释放顶部 42 像素空间 -->
-        <ui:TitleBar 
+        <ui:TitleBar x:Name="TopTitleBar"
             DockPanel.Dock="Top" 
             Height="42" 
             Padding="0"
             Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}">
             <ui:TitleBar.Header>
-                <Grid Margin="12,0,0,0" HorizontalAlignment="Stretch"><!-- 不设 Background：空白区落到原生标题栏(NC)，由系统处理拖动/双击最大化 -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding VmName}"
+                <Grid x:Name="ToolbarRoot" Margin="12,0,0,0" HorizontalAlignment="Stretch"><!-- 不设 Background：空白区落到原生标题栏(NC)，由系统处理拖动/双击最大化 -->
+                    <StackPanel x:Name="ConsoleToolbar" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="VmNameText" Text="{Binding VmName}"
            VerticalAlignment="Center"
            Margin="0,0,16,0"
            FontSize="12"
@@ -38,9 +38,9 @@
            MouseLeftButtonDown="OnHeaderMouseLeftButtonDown"
            Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"/><!-- 文字会接住鼠标 → 显式 DragMove 才能拖窗口（穿透在 ui:TitleBar 里拖不动，对齐 1.4.3） -->
 
-                        <Grid VerticalAlignment="Center">
+                        <Grid x:Name="PowerControls" VerticalAlignment="Center">
                             <!-- 启动按钮 -->
-                            <ui:Button Icon="{ui:SymbolIcon Symbol=Play24}"
+                            <ui:Button x:Name="StartButton" Icon="{ui:SymbolIcon Symbol=Play24}"
                                Appearance="Transparent" Background="Transparent"
                                Width="60" 
                                Height="32"
@@ -60,7 +60,7 @@
                                    Command="{Binding ShutdownVmCommand}"
                                    ToolTip="{x:Static properties:Resources.ConsoleWindow_ShutDown}" />
 
-                                <ui:DropDownButton Appearance="Transparent" Background="Transparent"
+                                <ui:DropDownButton x:Name="PowerMenuButton" Appearance="Transparent" Background="Transparent"
                                            Width="24"
                                            Height="32"
                                            Padding="0,0,8,0"
@@ -98,20 +98,22 @@
                             </StackPanel>
                         </Grid>
 
-                        <ui:DropDownButton Content="{Binding SelectedResolution}" 
+                        <ui:DropDownButton x:Name="ResolutionButton" Content="{Binding SelectedResolution}"
                                    Icon="{ui:SymbolIcon Symbol=Desktop24}" 
                                    Appearance="Transparent" Background="Transparent" 
                                    FontSize="16" 
                                    Height="32"
                                    Padding="8,0" 
                                    Margin="8,0,0,0"
+                                   ToolTip="{x:Static properties:ConsoleSessionText.ResolutionHint}"
+                                   ToolTipService.ShowOnDisabled="True"
                                    IsEnabled="{Binding CanChangeResolution}">
                             <ui:DropDownButton.Flyout>
                                 <ContextMenu ItemsSource="{Binding Resolutions}">
                                     <ContextMenu.ItemContainerStyle>
                                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                             <Setter Property="Header" Value="{Binding}" />
-                                            <Setter Property="Command" Value="{Binding DataContext.ChangeResolutionCommand, RelativeSource={RelativeSource AncestorType=ui:FluentWindow}}" />
+                                            <Setter Property="Command" Value="{Binding DataContext.ChangeResolutionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                             <Setter Property="CommandParameter" Value="{Binding}" />
                                         </Style>
                                     </ContextMenu.ItemContainerStyle>
@@ -120,7 +122,7 @@
                         </ui:DropDownButton>
 
                         <!-- Enhanced scaling changes the guest DPI, independently of bitmap zoom. -->
-                        <ui:DropDownButton Content="{Binding SelectedDesktopScaleLabel}"
+                        <ui:DropDownButton x:Name="DesktopScaleButton" Content="{Binding SelectedDesktopScaleLabel}"
                                            Icon="{ui:SymbolIcon Symbol=ZoomIn24}"
                                            Appearance="Transparent" Background="Transparent"
                                            FontSize="16" Height="32" Padding="8,0" Margin="8,0,0,0"
@@ -140,7 +142,7 @@
                         </ui:DropDownButton>
 
                         <!-- Basic-session zoom stretches the framebuffer. -->
-                        <ui:DropDownButton Content="{Binding SelectedZoom}"
+                        <ui:DropDownButton x:Name="ZoomButton" Content="{Binding SelectedZoom}"
                                    Icon="{ui:SymbolIcon Symbol=ZoomIn24}"
                                    Appearance="Transparent" Background="Transparent"
                                    FontSize="16"
@@ -154,7 +156,7 @@
                                     <ContextMenu.ItemContainerStyle>
                                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                             <Setter Property="Header" Value="{Binding}" />
-                                            <Setter Property="Command" Value="{Binding DataContext.ChangeZoomCommand, RelativeSource={RelativeSource AncestorType=ui:FluentWindow}}" />
+                                            <Setter Property="Command" Value="{Binding DataContext.ChangeZoomCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                             <Setter Property="CommandParameter" Value="{Binding}" />
                                         </Style>
                                     </ContextMenu.ItemContainerStyle>
@@ -162,11 +164,12 @@
                             </ui:DropDownButton.Flyout>
                         </ui:DropDownButton>
 
-                        <ui:DropDownButton Content="{Binding SelectedSessionMode}"
+                        <ui:DropDownButton x:Name="SessionModeButton" Content="{Binding SelectedSessionMode}"
                            Appearance="Transparent" Background="Transparent" 
                            FontSize="16"
                            Height="32"
                            Padding="8,0"
+                           ToolTip="{x:Static properties:ConsoleSessionText.ModeHint}"
                            Margin="8,0,0,0">
                             <ui:DropDownButton.Flyout>
                                 <ContextMenu>
@@ -201,6 +204,37 @@
                 </Grid>
             </ui:TitleBar.Header>
         </ui:TitleBar>
+
+        <!-- Window controls remain visible while the session toolbar can scroll in short windows. -->
+        <Border x:Name="SideBar" DockPanel.Dock="Left" Width="68" Visibility="Collapsed"
+                Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+                BorderBrush="{ui:ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <DockPanel LastChildFill="True">
+                <Border x:Name="ToolbarDragHandle" DockPanel.Dock="Top" Height="20" Margin="7,4,7,0"
+                        Background="Transparent" Cursor="SizeAll" ToolTip="拖动窗口，双击最大化 / 还原">
+                    <TextBlock Text="&#xE784;" FontFamily="Segoe Fluent Icons" FontSize="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel x:Name="SideWindowButtons" DockPanel.Dock="Bottom" Margin="7,4,7,8">
+                    <ui:Button Content="&#xE921;" FontFamily="Segoe Fluent Icons" FontSize="12"
+                               Width="52" Height="36" Margin="0,2" Padding="0" Appearance="Transparent"
+                               ToolTip="最小化" AutomationProperties.Name="最小化"
+                               Click="OnMinimizeClick"/>
+                    <ui:Button x:Name="SideMaximizeButton" Content="&#xE922;" FontFamily="Segoe Fluent Icons" FontSize="12"
+                               Width="52" Height="36" Margin="0,2" Padding="0" Appearance="Transparent"
+                               ToolTip="最大化 / 还原" AutomationProperties.Name="最大化 / 还原"
+                               Click="OnMaximizeClick"/>
+                    <ui:Button Content="&#xE8BB;" FontFamily="Segoe Fluent Icons" FontSize="12"
+                               Width="52" Height="36" Margin="0,2" Padding="0" Appearance="Transparent"
+                               ToolTip="关闭连接窗口" AutomationProperties.Name="关闭连接窗口"
+                               Click="OnCloseClick"/>
+                </StackPanel>
+                <ScrollViewer x:Name="ToolbarScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                              PanningMode="VerticalOnly">
+                    <ContentControl x:Name="SideToolbarHost" Margin="7,8,7,0"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
 
         <!-- RDP 画面按虚拟机尺寸居中；连接遮罩由 RdpClientHost 的 WinForms 层提供。 -->
         <Grid x:Name="RdpArea" Background="#FF000000">

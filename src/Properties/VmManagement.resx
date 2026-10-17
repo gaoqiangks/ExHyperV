@@ -1,0 +1,168 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="Title" xml:space="preserve">
+    <value>Virtual machine management settings</value>
+  </data>
+  <data name="Hint" xml:space="preserve">
+    <value>Name, integration services, checkpoints and host startup/shutdown behavior</value>
+  </data>
+  <data name="ApplyHint" xml:space="preserve">
+    <value>Each Apply button saves only its own section.</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="Browse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>Reload settings</value>
+  </data>
+  <data name="Integration" xml:space="preserve">
+    <value>Integration services</value>
+  </data>
+  <data name="IntegrationHint" xml:space="preserve">
+    <value>Allow these services on the host. Corresponding guest integration components must also be available.</value>
+  </data>
+  <data name="IntegrationEmpty" xml:space="preserve">
+    <value>No integration service settings were returned by Hyper-V.</value>
+  </data>
+  <data name="ShutdownService" xml:space="preserve">
+    <value>Operating system shutdown</value>
+  </data>
+  <data name="TimeSyncService" xml:space="preserve">
+    <value>Time synchronization</value>
+  </data>
+  <data name="DataExchangeService" xml:space="preserve">
+    <value>Data exchange</value>
+  </data>
+  <data name="HeartbeatService" xml:space="preserve">
+    <value>Heartbeat</value>
+  </data>
+  <data name="BackupService" xml:space="preserve">
+    <value>Backup (volume shadow copy)</value>
+  </data>
+  <data name="GuestService" xml:space="preserve">
+    <value>Guest service interface</value>
+  </data>
+  <data name="Checkpoints" xml:space="preserve">
+    <value>Checkpoints</value>
+  </data>
+  <data name="CheckpointHint" xml:space="preserve">
+    <value>Standard checkpoints capture memory and device state. Production checkpoints use guest backup services.</value>
+  </data>
+  <data name="CheckpointType" xml:space="preserve">
+    <value>Checkpoint type</value>
+  </data>
+  <data name="CheckpointDisabled" xml:space="preserve">
+    <value>Disable checkpoints</value>
+  </data>
+  <data name="CheckpointStandard" xml:space="preserve">
+    <value>Standard checkpoints</value>
+  </data>
+  <data name="CheckpointProduction" xml:space="preserve">
+    <value>Production (allow standard fallback)</value>
+  </data>
+  <data name="CheckpointProductionOnly" xml:space="preserve">
+    <value>Production only (no fallback)</value>
+  </data>
+  <data name="AutomaticCheckpoints" xml:space="preserve">
+    <value>Enable automatic checkpoints</value>
+  </data>
+  <data name="CheckpointDirectory" xml:space="preserve">
+    <value>Checkpoint file location</value>
+  </data>
+  <data name="CheckpointDirectoryHint" xml:space="preserve">
+    <value>Existing checkpoints may prevent changing this location.</value>
+  </data>
+  <data name="SmartPaging" xml:space="preserve">
+    <value>Smart paging file location</value>
+  </data>
+  <data name="SmartPagingHint" xml:space="preserve">
+    <value>Temporary host paging used when restarting a dynamic-memory VM. This is separate from the guest swap file.</value>
+  </data>
+  <data name="AutomaticStart" xml:space="preserve">
+    <value>Automatic start action</value>
+  </data>
+  <data name="AutomaticStartHint" xml:space="preserve">
+    <value>Hyper-V performs this action when the physical computer starts.</value>
+  </data>
+  <data name="StartNone" xml:space="preserve">
+    <value>Do not start automatically</value>
+  </data>
+  <data name="StartIfRunning" xml:space="preserve">
+    <value>Start if running when the host stopped</value>
+  </data>
+  <data name="StartAlways" xml:space="preserve">
+    <value>Always start this virtual machine</value>
+  </data>
+  <data name="StartDelay" xml:space="preserve">
+    <value>Startup delay (seconds)</value>
+  </data>
+  <data name="AutomaticStop" xml:space="preserve">
+    <value>Automatic stop action</value>
+  </data>
+  <data name="AutomaticStopHint" xml:space="preserve">
+    <value>Hyper-V performs this action when the physical computer shuts down.</value>
+  </data>
+  <data name="StopSave" xml:space="preserve">
+    <value>Save the virtual machine state</value>
+  </data>
+  <data name="StopTurnOff" xml:space="preserve">
+    <value>Turn off the virtual machine</value>
+  </data>
+  <data name="StopShutdown" xml:space="preserve">
+    <value>Shut down the guest operating system</value>
+  </data>
+  <data name="StopHint" xml:space="preserve">
+    <value>Guest shutdown requires the shutdown integration service. GPU partitioning may prevent saving state.</value>
+  </data>
+  <data name="Saved" xml:space="preserve">
+    <value>Settings saved.</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Reading Hyper-V settings…</value>
+  </data>
+  <data name="VmNotFound" xml:space="preserve">
+    <value>The virtual machine no longer exists.</value>
+  </data>
+  <data name="InvalidName" xml:space="preserve">
+    <value>Enter a name containing 1–100 characters without control characters.</value>
+  </data>
+  <data name="InvalidStart" xml:space="preserve">
+    <value>Select a valid start action and a non-negative integer delay in seconds.</value>
+  </data>
+  <data name="InvalidStop" xml:space="preserve">
+    <value>Select a valid stop action.</value>
+  </data>
+  <data name="InvalidCheckpoint" xml:space="preserve">
+    <value>Select a valid checkpoint type.</value>
+  </data>
+  <data name="InvalidDirectory" xml:space="preserve">
+    <value>Enter a valid folder using its full absolute path.</value>
+  </data>
+  <data name="InvalidIntegration" xml:space="preserve">
+    <value>The integration service is unavailable for this virtual machine.</value>
+  </data>
+  <data name="GpuSaveUnsupported" xml:space="preserve">
+    <value>This virtual machine has GPU partitions and cannot save its state. Choose guest shutdown or turn off.</value>
+  </data>
+  <data name="Unsupported" xml:space="preserve">
+    <value>This setting is unavailable on the current Hyper-V host.</value>
+  </data>
+</root>

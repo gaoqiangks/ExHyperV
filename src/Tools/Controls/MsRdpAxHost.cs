@@ -17,6 +17,7 @@ namespace ExHyperV.Tools
         private HvSocketRdpBridge? guestBridge;
         private bool _smartSizing;   // 当前 SmartSizing 状态缓存（SetSmartSizing 用，避免重复设值闪烁）
         private uint _zoomLevel;     // 当前 ZoomLevel% 缓存（SetZoomLevel 用，基本会话每次布局都会调，仅比例真变时才穿透 OCX）
+        private string? _connectionLabel;
 
         public event Action? Connected;
         public event Action? LoginCompleted;
@@ -37,9 +38,21 @@ namespace ExHyperV.Tools
             {
                 var evt = (IMsTscAxEvents_Event)GetOcx();
                 // COM 事件通过 Safe() 隔离异常，避免异常返回 native 后触发 0xC000041D。
-                evt.OnConnected += () => Safe(() => Connected?.Invoke());
-                evt.OnLoginComplete += () => Safe(() => LoginCompleted?.Invoke());
-                evt.OnDisconnected += reason => Safe(() => { guestBridge?.Dispose(); guestBridge = null; Disconnected?.Invoke(reason); });
+                evt.OnConnected += () => Safe(() => { ReportDesktopSize(); Connected?.Invoke(); });
+                evt.OnLoginComplete += () => Safe(() => { ReportDesktopSize(); LoginCompleted?.Invoke(); });
+                evt.OnDisconnected += reason => Safe(() =>
+                {
+                    // Read extended details inside the COM callback, before reconnecting changes them.
+                    try
+                    {
+                        dynamic rdp = GetOcx();
+                        int extended = (int)rdp.ExtendedDisconnectReason;
+                        string description = rdp.GetErrorDescription((uint)reason, (uint)extended);
+                        ExHyperV.Services.AutoConnectLog.Write($"RDP disconnected: {_connectionLabel}; reason={reason}; extended={extended}; {description.Replace('\r', ' ').Replace('\n', ' ')}");
+                    }
+                    catch (Exception ex) { Debug.WriteLine("[Rdp] Disconnect details unavailable: " + ex.Message); }
+                    guestBridge?.Dispose(); guestBridge = null; Disconnected?.Invoke(reason);
+                });
                 evt.OnRemoteDesktopSizeChange += (w, h) => Safe(() => RemoteDesktopSizeChanged?.Invoke(w, h));
                 // 容器处理全屏：热键/请求经 OnRequestGo/LeaveFullScreen（非 OnEnter/Leave，那是控件自身全屏才触发）
                 evt.OnRequestGoFullScreen += () => Safe(() => EnteredFullScreen?.Invoke());
@@ -55,8 +68,22 @@ namespace ExHyperV.Tools
             }
         }
 
+        private void ReportDesktopSize()
+        {
+            // The initial negotiated size need not raise OnRemoteDesktopSizeChange.
+            // Publish it explicitly so the window never lays out using a saved, stale size.
+            try
+            {
+                dynamic rdp = GetOcx();
+                int width = (int)rdp.DesktopWidth, height = (int)rdp.DesktopHeight;
+                if (width > 0 && height > 0) RemoteDesktopSizeChanged?.Invoke(width, height);
+            }
+            catch (Exception ex) { Debug.WriteLine("[Rdp] Initial desktop size unavailable: " + ex.Message); }
+        }
+
         public void ApplyAndConnect(RdpConnectionSettings s)
         {
+            _connectionLabel = s.ConnectionBarText;
             try
             {
                 guestBridge?.Dispose();
@@ -143,7 +170,7 @@ namespace ExHyperV.Tools
                 TrySet("EnableAutoReconnect", () => adv.EnableAutoReconnect = s.GuestVmId == null);
                 // VMBus 无真实网络：关掉带宽/网络探测，避免连接栏"网络信息"弹窗取退化数据而原生崩溃。
                 TrySet("BandwidthDetection", () => adv.BandwidthDetection = false);
-                // 连接超时调短：localhost VMBus 正常连接 <1s，调短让连不上的会话(如不支持增强)快速放弃 → 快速回退。
+                // Apply the caller's handshake budget; guest startup can be slower than local TCP.
                 if (s.ConnectionTimeoutSeconds > 0)
                 {
                     TrySet("singleConnectionTimeout", () => adv.singleConnectionTimeout = s.ConnectionTimeoutSeconds);
@@ -180,7 +207,7 @@ namespace ExHyperV.Tools
             {
                 guestBridge?.Dispose();
                 guestBridge = null;
-                ExHyperV.Services.AutoConnectLog.Write("RDP connection failed: " + ex.GetType().Name);
+                ExHyperV.Services.AutoConnectLog.Write($"RDP connection failed: {_connectionLabel}; {ex.GetType().Name}; HRESULT=0x{ex.HResult:X8}");
                 Debug.WriteLine("[Rdp] ApplyAndConnect 异常: " + ex);
             }
         }
@@ -257,7 +284,11 @@ namespace ExHyperV.Tools
                 uint physH = (uint)Math.Round(height * 25.4 / dpi);
                 rdp.UpdateSessionDisplaySettings((uint)width, (uint)height, physW, physH, 0u, desktopScaleFactor, 100u);
             }
-            catch (Exception ex) { Debug.WriteLine("[Rdp] SetResolution 失败: " + ex.Message); }
+            catch (Exception ex)
+            {
+                ExHyperV.Services.AutoConnectLog.Write($"Display resize rejected: {width}x{height}; HRESULT=0x{ex.HResult:X8}; {ex.Message}");
+                Debug.WriteLine("[Rdp] SetResolution 失败: " + ex.Message);
+            }
         }
 
         /// <summary>基本会话缩放：设 mstscax 原生 ZoomLevel(百分比，如 100/150/200)。经 IMsRdpExtendedSettings 字符串属性包热设，

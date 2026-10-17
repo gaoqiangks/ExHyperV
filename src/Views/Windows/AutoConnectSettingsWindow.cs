@@ -23,6 +23,12 @@ internal sealed class AutoConnectSettingsWindow : Window
         var clipboard = new CheckBox { Content = "增强会话共享剪贴板（复制文字和文件）", IsChecked = o.RedirectClipboard, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(clipboard);
         var drives = new CheckBox { Content = "增强会话共享宿主机磁盘（支持文件复制粘贴）", IsChecked = o.RedirectDrives, Margin = new Thickness(0,0,0,8) }; panel.Children.Add(drives);
         panel.Children.Add(new TextBlock { Text = "文件复制粘贴需要同时启用以上两项。共享磁盘会出现在来宾的“此电脑”中。\n保存后重新连接生效；关闭连接窗口不会关闭虚拟机。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
+        panel.Children.Add(new TextBlock { Text = "虚拟机连接窗口的控制栏位置" });
+        var toolbarPosition = new ComboBox { Margin = new Thickness(0,4,0,8) };
+        var toolbarPositions = new[] { "Top", "Left", "Right", "Bottom" };
+        foreach (var label in new[] { "顶部", "左侧", "右侧", "底部" }) toolbarPosition.Items.Add(label);
+        toolbarPosition.SelectedIndex = Array.IndexOf(toolbarPositions, o.ConsoleToolbarPosition); panel.Children.Add(toolbarPosition);
+        panel.Children.Add(new TextBlock { Text = "仅影响虚拟机连接窗口，保存后重新打开连接窗口生效。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
         panel.Children.Add(new TextBlock { Text = "连接后的窗口状态" });
         var mode = new ComboBox { Margin = new Thickness(0,4,0,12) };
         var values = new[] { "Normal", "Maximized", "Minimized", "FullScreen" };
@@ -33,7 +39,7 @@ internal sealed class AutoConnectSettingsWindow : Window
         panel.Children.Add(new TextBlock { Text = "仅适用于当前选中的无密码 Windows 账户。\n连接后发送至多两次 Enter；有密码时仍需手动登录。\n不修改来宾系统的账户或安全策略。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
         var save = new Button { Content = "保存", Width = 100, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         save.Click += (_, _) => {
-            try { o.DefaultVmManagementPage = vmPage.IsChecked == true; o.OpenMainWhenConnected = existing.IsChecked == true; o.PreferEnhancedSession = enhanced.IsChecked == true; o.RedirectClipboard = clipboard.IsChecked == true; o.RedirectDrives = drives.IsChecked == true; o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
+            try { o.DefaultVmManagementPage = vmPage.IsChecked == true; o.OpenMainWhenConnected = existing.IsChecked == true; o.PreferEnhancedSession = enhanced.IsChecked == true; o.RedirectClipboard = clipboard.IsChecked == true; o.RedirectDrives = drives.IsChecked == true; o.ConsoleToolbarPosition = toolbarPositions[toolbarPosition.SelectedIndex]; o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
             catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "保存失败"); }
         };
         panel.Children.Add(save); Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };

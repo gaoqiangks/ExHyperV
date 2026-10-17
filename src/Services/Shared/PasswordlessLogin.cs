@@ -26,8 +26,17 @@ internal static class PasswordlessLogin
                 for (int i = 0; i < 2 && !loggedIn; i++)
                 {
                     if (host.ConnectionState != 1) return;
-                    host.SendGuestEnter();
-                    AutoConnectLog.Write($"Passwordless login Enter {i + 1}/2 sent to guest: {vmName}");
+                    try
+                    {
+                        host.SendGuestEnter();
+                        AutoConnectLog.Write($"Passwordless login Enter {i + 1}/2 sent to guest: {vmName}");
+                    }
+                    catch (System.Runtime.InteropServices.COMException ex)
+                    {
+                        // A newly connected LogonUI may not accept input yet. Keep the existing
+                        // two-attempt bound instead of aborting before the second attempt.
+                        AutoConnectLog.Write($"Passwordless login input not ready ({i + 1}/2): {vmName}; 0x{ex.HResult:X8}");
+                    }
                     await Task.Delay(1400, token);
                 }
                 if (!loggedIn) AutoConnectLog.Write($"Login not yet confirmed; no more input will be sent: {vmName}");
