@@ -312,9 +312,10 @@ namespace ExHyperV.Tools
         public void SendGuestEnter()
         {
             if (ConnectionState != 1) throw new InvalidOperationException("RDP is not connected.");
+            Focus(); // The ActiveX input path must be active, including for background VM windows.
             var client = (IMsRdpClientNonScriptable)GetOcx();
             bool up = false;
-            int data = 0x1C; // RDP scan code for Enter; key-up is carried separately.
+            int data = 0x1C; // Enter scan code for this control; key-up is carried separately.
             client.SendKeys(1, ref up, ref data);
             up = true;
             data = 0x1C;

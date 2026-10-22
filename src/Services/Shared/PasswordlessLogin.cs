@@ -4,45 +4,62 @@ using ExHyperV.Views;
 namespace ExHyperV.Services;
 internal static class PasswordlessLogin
 {
-    internal static void Attach(ConsoleWindow window, RdpClientHost host, string vmName)
+    internal static void Attach(ConsoleWindow window, RdpClientHost host, string vmId, string vmName, Func<bool> isEnhancedSession)
     {
         CancellationTokenSource? attempt = null;
         bool loggedIn = false;
-        host.LoginCompleted += () => { loggedIn = true; attempt?.Cancel(); AutoConnectLog.Write($"Guest login confirmed: {vmName}"); };
-        host.Disconnected += _ => { attempt?.Cancel(); loggedIn = false; };
-        window.Closed += (_, _) => attempt?.Cancel();
-        host.Connected += () => window.Dispatcher.InvokeAsync(async () =>
+        void CancelAttempt()
         {
-            if (EnhancedSessionCredentials.IsConfigured(vmName)) return;
-            var options = AutoConnectOptions.Load();
-            if (!options.PasswordlessAutoLogin || !string.Equals(options.VmName, vmName, StringComparison.OrdinalIgnoreCase)) return;
             attempt?.Cancel();
+            attempt?.Dispose();
+            attempt = null;
+        }
+        host.LoginCompleted += () =>
+        {
+            // A basic Hyper-V console reports a transport logon even while Windows is at Sign in.
+            if (!isEnhancedSession()) return;
+            loggedIn = true;
+            CancelAttempt();
+            AutoConnectLog.Write($"Guest login confirmed: {vmName}");
+        };
+        host.Disconnected += _ => { CancelAttempt(); loggedIn = false; };
+        window.Closed += (_, _) => CancelAttempt();
+        host.Connected += () =>
+        {
+            CancelAttempt();
             attempt = new CancellationTokenSource();
             var token = attempt.Token;
-            loggedIn = false;
-            try
+            window.Dispatcher.InvokeAsync(async () =>
             {
-                await Task.Delay(2500, token);
-                for (int i = 0; i < 2 && !loggedIn; i++)
+                try
                 {
-                    if (host.ConnectionState != 1) return;
-                    try
+                    if (token.IsCancellationRequested || loggedIn || EnhancedSessionCredentials.IsConfigured(vmName)) return;
+                    // Resolve the saved VM ID, so renaming a guest does not change its login choice.
+                    if (!AutoConnectOptions.Load().IsPasswordlessLoginEnabled(vmId)) return;
+                    await Task.Delay(2500, token);
+                    for (int i = 0; i < 2 && !loggedIn; i++)
                     {
-                        host.SendGuestEnter();
-                        AutoConnectLog.Write($"Passwordless login Enter {i + 1}/2 sent to guest: {vmName}");
+                        token.ThrowIfCancellationRequested();
+                        if (host.ConnectionState != 1 || !AutoConnectOptions.Load().IsPasswordlessLoginEnabled(vmId)) return;
+                        try
+                        {
+                            // Each console must activate its own input control when several VMs connect.
+                            window.Activate();
+                            if (loggedIn || token.IsCancellationRequested) return;
+                            host.SendGuestEnter();
+                            AutoConnectLog.Write($"Passwordless login Enter {i + 1}/2 sent to guest: {vmName}");
+                        }
+                        catch (System.Runtime.InteropServices.COMException ex)
+                        {
+                            AutoConnectLog.Write($"Passwordless login input not ready ({i + 1}/2): {vmName}; 0x{ex.HResult:X8}");
+                        }
+                        await Task.Delay(1400, token);
                     }
-                    catch (System.Runtime.InteropServices.COMException ex)
-                    {
-                        // A newly connected LogonUI may not accept input yet. Keep the existing
-                        // two-attempt bound instead of aborting before the second attempt.
-                        AutoConnectLog.Write($"Passwordless login input not ready ({i + 1}/2): {vmName}; 0x{ex.HResult:X8}");
-                    }
-                    await Task.Delay(1400, token);
+                    if (!loggedIn) AutoConnectLog.Write($"Login not yet confirmed; no more input will be sent: {vmName}");
                 }
-                if (!loggedIn) AutoConnectLog.Write($"Login not yet confirmed; no more input will be sent: {vmName}");
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { AutoConnectLog.Write("Passwordless login failed: " + ex); }
-        });
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { AutoConnectLog.Write("Passwordless login failed: " + ex); }
+            });
+        };
     }
 }

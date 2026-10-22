@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
@@ -27,7 +28,7 @@ namespace ExHyperV.Views
     public partial class ConsoleWindow : FluentWindow
     {
         private const double TitleBarHeight = 42;   // 与 XAML ui:TitleBar 高度一致
-        private const double SideBarWidth = 68;
+        private const double SideBarWidth = 44;
         // 全屏热键 Ctrl+Alt+Enter，交给 mstscax 自带的 HotKeyFullScreen(此 vk 传给 FullScreenHotKeyVirtualKey)。
         // 仅 ZoomLevel=100 时有效——非 100% 缩放下 mstscax 的 UI_GoFullScreen 有 zoom!=100 即 return 的 guard，热键进不去全屏(by design，接受)。
         private const int FullScreenHotKeyVk = 0x0D;
@@ -41,6 +42,8 @@ namespace ExHyperV.Views
 
         private readonly ConsoleViewModel _vm;
         private readonly string _toolbarPosition;
+        private FileSystemWatcher? _toolbarSettingsWatcher;
+        private readonly System.Windows.Threading.DispatcherTimer _toolbarAppearanceTimer;
         private bool IsVerticalToolbar => _toolbarPosition is "Left" or "Right";
         private bool _isFullScreen;               // 供 WM_GETMINMAXINFO 判断最大化铺满显示器还是工作区
         private bool _syncingFs;                  // 防止 mstscax→VM→mstscax 全屏状态回灌
@@ -89,9 +92,25 @@ namespace ExHyperV.Views
             { Interval = TimeSpan.FromMilliseconds(150) };
             _displayResizeTimer.Tick += OnDisplayResizeTick;
             ConfigureToolbarPlacement();
+            _toolbarAppearanceTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _toolbarAppearanceTimer.Tick += (_, _) => { _toolbarAppearanceTimer.Stop(); if (!_closing) ApplyToolbarAppearance(); };
+            ApplyToolbarAppearance();
+            AutoConnectOptions.Saved += OnConsoleSettingsSaved;
+            // Settings can be edited in a second ExHyperV process while this connection remains open.
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(AutoConnectOptions.ConfigPath)!);
+                _toolbarSettingsWatcher = new FileSystemWatcher(Path.GetDirectoryName(AutoConnectOptions.ConfigPath)!, Path.GetFileName(AutoConnectOptions.ConfigPath))
+                { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
+                _toolbarSettingsWatcher.Changed += (_, _) => OnConsoleSettingsSaved();
+                _toolbarSettingsWatcher.Created += (_, _) => OnConsoleSettingsSaved();
+                _toolbarSettingsWatcher.Renamed += (_, _) => OnConsoleSettingsSaved();
+                _toolbarSettingsWatcher.EnableRaisingEvents = true;
+            }
+            catch (Exception ex) { AutoConnectLog.Write("Toolbar settings watch failed: " + ex.Message); }
             var connectionPresence = ConnectionPresence.Register();
             Closed += (_, _) => connectionPresence.Dispose();
-            ExHyperV.Services.PasswordlessLogin.Attach(this, RdpHost, vmName);
+            ExHyperV.Services.PasswordlessLogin.Attach(this, RdpHost, vmId, vmName, () => _vm.IsEnhancedMode);
             if (App.PerformanceMode)
             {
                 WindowBackdropType = WindowBackdropType.None;
@@ -296,6 +315,26 @@ namespace ExHyperV.Views
             if (_displayResizeAttempts < MaximumDisplayResizeAttempts) StartDisplayResizeTimer();
         }
 
+        private void OnConsoleSettingsSaved()
+        {
+            if (_closing || Dispatcher.HasShutdownStarted) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_closing) return;
+                _toolbarAppearanceTimer.Stop();
+                _toolbarAppearanceTimer.Start();
+            }));
+        }
+
+        private void ApplyToolbarAppearance()
+        {
+            var options = AutoConnectOptions.Load();
+            ConsoleToolbarAppearance.Apply(TopTitleBar, options.ConsoleToolbarBackground);
+            ConsoleToolbarAppearance.Apply(SideBar, options.ConsoleToolbarBackground);
+            VmNameText.Text = options.ConsoleToolbarName.GetDisplayName(_vm.VmId, _vm.VmName);
+            VmNameText.ToolTip = _vm.VmName;
+        }
+
         private void ConfigureToolbarPlacement()
         {
             foreach (var dropdown in new[] { PowerMenuButton, ResolutionButton, DesktopScaleButton, ZoomButton, SessionModeButton })
@@ -322,27 +361,46 @@ namespace ExHyperV.Views
                 DockPanel.SetDock(SideBar, _toolbarPosition == "Left" ? Dock.Left : Dock.Right);
                 SideBar.BorderThickness = _toolbarPosition == "Left" ? new Thickness(0, 0, 1, 0) : new Thickness(1, 0, 0, 0);
                 ToolbarRoot.Margin = new Thickness(0);
+                SideToolbarHost.Margin = new Thickness(3, 6, 3, 0);
+                SideWindowButtons.Margin = new Thickness(3, 4, 3, 6);
+                DockPanel.SetDock(SideWindowButtons, Dock.Top);
+                DockPanel.SetDock(ToolbarDragHandle, Dock.Bottom);
+                var windowButtons = SideWindowButtons.Children.Cast<UIElement>().Reverse().ToArray();
+                SideWindowButtons.Children.Clear();
+                foreach (var button in windowButtons) SideWindowButtons.Children.Add(button);
+                foreach (System.Windows.Controls.Control button in SideWindowButtons.Children) button.Width = 36;
+                ToolbarDragHandle.Margin = new Thickness(3, 4, 3, 0);
                 ConsoleToolbar.Orientation = Orientation.Vertical;
                 ConsoleToolbar.VerticalAlignment = VerticalAlignment.Top;
-                VmNameText.Width = 52;
+                VmNameText.Width = 36;
                 VmNameText.Margin = new Thickness(0, 4, 0, 10);
-                VmNameText.FontSize = 10;
+                VmNameText.FontSize = 8.5;
                 VmNameText.TextWrapping = TextWrapping.Wrap;
                 VmNameText.TextAlignment = TextAlignment.Center;
                 VmNameText.ToolTip = _vm.VmName;
-                PowerControls.Width = 52;
+                PowerControls.Width = 36;
                 PowerControls.Margin = new Thickness(0, 4, 0, 0);
-                StartButton.Width = 52;
-                PowerMenuButton.Width = 16;
+                StartButton.Width = 36;
+                RunningPowerButtons.Orientation = Orientation.Vertical;
+                ShutdownButton.Width = 36;
+                ShutdownButton.Height = 26;
+                ShutdownButton.CornerRadius = new CornerRadius(4, 4, 0, 0);
+                PowerMenuButton.Width = 36;
+                PowerMenuButton.Height = 14;
+                PowerMenuButton.CornerRadius = new CornerRadius(0, 0, 4, 4);
                 PowerMenuButton.Padding = new Thickness(0);
+                PowerMenuButton.Template = (ControlTemplate)FindResource("VerticalToolbarDropDownTemplate");
 
                 foreach (var child in ConsoleToolbar.Children)
                 {
                     if (child is not System.Windows.Controls.Control control) continue;
-                    control.Width = 52;
+                    control.Width = 36;
                     control.Height = 38;
+                    control.FontSize = 10;
                     control.Margin = new Thickness(0, 6, 0, 0);
                     control.Padding = new Thickness(0);
+                    if (control is DropDownButton dropdown)
+                        dropdown.Template = (ControlTemplate)FindResource("VerticalToolbarDropDownTemplate");
                 }
                 ConfigureCompactMenu(ResolutionButton, nameof(ConsoleViewModel.SelectedResolution), "分辨率");
                 ResolutionButton.ToolTip = Properties.ConsoleSessionText.ResolutionHint;
@@ -350,15 +408,9 @@ namespace ExHyperV.Views
                 ConfigureCompactMenu(ZoomButton, nameof(ConsoleViewModel.SelectedZoom), "画面缩放");
                 ConfigureCompactMenu(SessionModeButton, nameof(ConsoleViewModel.SelectedSessionMode), "会话模式");
                 // Keep an explicit label in the narrow toolbar; the monitor above controls resolution.
-                SessionModeButton.Icon = null;
-                SessionModeButton.Content = new StackPanel
-                {
-                    Children =
-                    {
-                        new SymbolIcon(SymbolRegular.ArrowSync16) { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center },
-                        new System.Windows.Controls.TextBlock { Text = Properties.ConsoleSessionText.Mode, FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center }
-                    }
-                };
+                SessionModeButton.Icon = new SymbolIcon(SymbolRegular.ArrowSync16) { FontSize = 12 };
+                SessionModeButton.Content = Properties.ConsoleSessionText.Mode;
+                SessionModeButton.Height = 44;
             }
             else
             {
@@ -508,6 +560,10 @@ namespace ExHyperV.Views
         {
             switch (e.PropertyName)
             {
+                case nameof(ConsoleViewModel.VmName):
+                    ApplyToolbarAppearance();
+                    break;
+
                 case nameof(ConsoleViewModel.DesktopScalePercent):
                     if (_vm.IsEnhancedMode && _vm.SupportsDesktopScale)
                     {
@@ -999,6 +1055,9 @@ namespace ExHyperV.Views
         {
             base.OnClosed(e);
             _closing = true;
+            AutoConnectOptions.Saved -= OnConsoleSettingsSaved;
+            _toolbarSettingsWatcher?.Dispose();
+            _toolbarAppearanceTimer.Stop();
             if (!_rdpTornDown) { _rdpTornDown = true; RdpHost.ShutdownAndDispose(); }
             _vm.SendCadRequested -= OnSendCadRequested;
             _vm.PropertyChanged -= OnViewModelPropertyChanged;

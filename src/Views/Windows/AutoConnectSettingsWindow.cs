@@ -1,10 +1,13 @@
 using System.Windows;
 using System.Windows.Controls;
 using ExHyperV.Services;
+using ExHyperV.Tools;
+using System.Windows.Media;
 using CheckBox = System.Windows.Controls.CheckBox;
 
 using ComboBox = System.Windows.Controls.ComboBox;
 using Button = System.Windows.Controls.Button;
+using Brushes = System.Windows.Media.Brushes;
 namespace ExHyperV.Views;
 internal sealed class AutoConnectSettingsWindow : Window
 {
@@ -29,6 +32,45 @@ internal sealed class AutoConnectSettingsWindow : Window
         foreach (var label in new[] { "顶部", "左侧", "右侧", "底部" }) toolbarPosition.Items.Add(label);
         toolbarPosition.SelectedIndex = Array.IndexOf(toolbarPositions, o.ConsoleToolbarPosition); panel.Children.Add(toolbarPosition);
         panel.Children.Add(new TextBlock { Text = "仅影响虚拟机连接窗口，保存后重新打开连接窗口生效。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
+        panel.Children.Add(new TextBlock { Text = "虚拟机连接窗口的控制栏背景色" });
+        var customBackground = new CheckBox { Content = "使用自定义背景色（关闭时跟随主题）", Foreground = Foreground, IsChecked = !string.IsNullOrEmpty(o.ConsoleToolbarBackground), Margin = new Thickness(0,8,0,8) };
+        panel.Children.Add(customBackground);
+        var colorRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0,0,0,8) };
+        var colorText = new TextBox { Text = string.IsNullOrEmpty(o.ConsoleToolbarBackground) ? "#202020" : o.ConsoleToolbarBackground, Width = 115, VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 7, ToolTip = "输入 #RRGGBB 格式的颜色" };
+        var chooseColor = new Button { Content = "选择颜色…", Margin = new Thickness(8,0,0,0), Padding = new Thickness(12,4,12,4) };
+        var previewText = new TextBlock { Text = "控制栏 Aa", Margin = new Thickness(10,4,10,4), VerticalAlignment = VerticalAlignment.Center };
+        var preview = new Border { Child = previewText, CornerRadius = new CornerRadius(4), Margin = new Thickness(10,0,0,0), BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1) };
+        void RefreshPreview()
+        {
+            colorRow.IsEnabled = customBackground.IsChecked == true;
+            if (AutoConnectOptions.TryNormalizeToolbarBackground(colorText.Text, out string color) && color.Length != 0)
+            {
+                ConsoleToolbarAppearance.Apply(preview, color);
+                previewText.Foreground = (System.Windows.Media.Brush)preview.Resources["TextFillColorPrimaryBrush"];
+            }
+        }
+        chooseColor.Click += (_, _) =>
+        {
+            using var dialog = new System.Windows.Forms.ColorDialog { FullOpen = true };
+            if (AutoConnectOptions.TryNormalizeToolbarBackground(colorText.Text, out string color) && color.Length != 0)
+                dialog.Color = System.Drawing.ColorTranslator.FromHtml(color);
+            var owner = new System.Windows.Forms.NativeWindow();
+            owner.AssignHandle(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            try
+            {
+                if (dialog.ShowDialog(owner) == System.Windows.Forms.DialogResult.OK)
+                    colorText.Text = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+            }
+            finally { owner.ReleaseHandle(); }
+        };
+        colorText.TextChanged += (_, _) => RefreshPreview();
+        customBackground.Checked += (_, _) => RefreshPreview();
+        customBackground.Unchecked += (_, _) => RefreshPreview();
+        colorRow.Children.Add(colorText); colorRow.Children.Add(chooseColor); colorRow.Children.Add(preview); panel.Children.Add(colorRow);
+        RefreshPreview();
+        panel.Children.Add(new TextBlock { Text = "可选择颜色或输入色值，例如 #202020。保存后立即应用，文字和图标自动适配明暗。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
+        var toolbarName = new ConsoleToolbarNameEditor(o.ConsoleToolbarName, Foreground);
+        panel.Children.Add(toolbarName);
         panel.Children.Add(new TextBlock { Text = "连接后的窗口状态" });
         var mode = new ComboBox { Margin = new Thickness(0,4,0,12) };
         var values = new[] { "Normal", "Maximized", "Minimized", "FullScreen" };
@@ -36,12 +78,61 @@ internal sealed class AutoConnectSettingsWindow : Window
         mode.SelectedIndex = Math.Max(0, Array.IndexOf(values, o.WindowMode)); panel.Children.Add(mode);
         var close = new CheckBox { Content = "连接成功后关闭管理主窗口", IsChecked = o.CloseMainAfterConnect, Margin = new Thickness(0,0,0,12) }; panel.Children.Add(close);
         var login = new CheckBox { Content = "连接后自动登录 / 解锁无密码账户", IsChecked = o.PasswordlessAutoLogin, Margin = new Thickness(0,0,0,8) }; panel.Children.Add(login);
-        panel.Children.Add(new TextBlock { Text = "仅适用于当前选中的无密码 Windows 账户。\n连接后发送至多两次 Enter；有密码时仍需手动登录。\n不修改来宾系统的账户或安全策略。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
+        panel.Children.Add(new TextBlock { Text = "分别选择需要自动登录的虚拟机：", Margin = new Thickness(16,0,0,6) });
+        var loginList = new StackPanel { Margin = new Thickness(16,0,0,8), IsEnabled = login.IsChecked == true };
+        var loading = new TextBlock { Text = "正在读取虚拟机…" }; loginList.Children.Add(loading); panel.Children.Add(loginList);
+        var vmLoginChecks = new Dictionary<string, CheckBox>();
+        login.Checked += (_, _) => loginList.IsEnabled = true;
+        login.Unchecked += (_, _) => loginList.IsEnabled = false;
+        Loaded += async (_, _) =>
+        {
+            try
+            {
+                var result = await WmiApi.QueryAsync("SELECT Name, ElementName FROM Msvm_ComputerSystem",
+                    vm => new StartupVmOption { Id = vm["Name"]?.ToString() ?? "", Name = vm["ElementName"]?.ToString() ?? "" }, WmiScope.HyperV);
+                if (!result.Success) throw new InvalidOperationException(result.Error);
+                toolbarName.SetVirtualMachines(result.Data ?? []);
+                loginList.Children.Clear();
+                foreach (var vm in (result.Data ?? []).Where(vm => Guid.TryParse(vm.Id, out _)).OrderBy(vm => vm.Name))
+                {
+                    string id = Guid.Parse(vm.Id).ToString("D");
+                    var check = new CheckBox { Content = vm.Name, Foreground = Foreground, IsChecked = o.IsPasswordlessLoginSelected(id), Margin = new Thickness(0,0,0,6) };
+                    vmLoginChecks[id] = check; loginList.Children.Add(check);
+                }
+                if (vmLoginChecks.Count == 0) loginList.Children.Add(new TextBlock { Text = "未找到虚拟机。" });
+            }
+            catch (Exception ex) { loading.Text = "无法读取虚拟机列表；已有单机设置保持不变。"; toolbarName.ShowLoadError(); AutoConnectLog.Write("Login VM list failed: " + ex.Message); }
+        };
+        panel.Children.Add(new TextBlock { Text = "总开关与单机开关均开启时才会自动登录，与启动时自动连接独立。\n关闭后停止后续登录操作；开启后在下次连接或重启时生效。\n仅适用于无密码 Windows 账户，每次连接最多发送两次 Enter。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0,0,0,16) });
         var save = new Button { Content = "保存", Width = 100, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         save.Click += (_, _) => {
-            try { o.DefaultVmManagementPage = vmPage.IsChecked == true; o.OpenMainWhenConnected = existing.IsChecked == true; o.PreferEnhancedSession = enhanced.IsChecked == true; o.RedirectClipboard = clipboard.IsChecked == true; o.RedirectDrives = drives.IsChecked == true; o.ConsoleToolbarPosition = toolbarPositions[toolbarPosition.SelectedIndex]; o.WindowMode = values[mode.SelectedIndex]; o.CloseMainAfterConnect = close.IsChecked == true; o.PasswordlessAutoLogin = login.IsChecked == true; o.Save(); Close(); }
+            try
+            {
+                if (customBackground.IsChecked == true && string.IsNullOrWhiteSpace(colorText.Text))
+                    throw new ArgumentException("请输入控制栏背景色，或关闭自定义背景色以跟随主题。");
+                var current = AutoConnectOptions.Load();
+                current.DefaultVmManagementPage = vmPage.IsChecked == true;
+                current.OpenMainWhenConnected = existing.IsChecked == true;
+                current.PreferEnhancedSession = enhanced.IsChecked == true;
+                current.RedirectClipboard = clipboard.IsChecked == true;
+                current.RedirectDrives = drives.IsChecked == true;
+                current.ConsoleToolbarPosition = toolbarPositions[toolbarPosition.SelectedIndex];
+                current.ConsoleToolbarBackground = customBackground.IsChecked == true ? colorText.Text : "";
+                current.ConsoleToolbarName = toolbarName.GetOptions(current.ConsoleToolbarName);
+                current.WindowMode = values[mode.SelectedIndex];
+                current.CloseMainAfterConnect = close.IsChecked == true;
+                current.PasswordlessAutoLogin = login.IsChecked == true;
+                if (vmLoginChecks.Count > 0)
+                {
+                    current.PasswordlessAutoLoginByVm ??= new();
+                    foreach (var vm in vmLoginChecks) current.PasswordlessAutoLoginByVm[vm.Key] = vm.Value.IsChecked == true;
+                }
+                current.Save();
+                Close();
+            }
             catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "保存失败"); }
         };
+        foreach (var checkBox in panel.Children.OfType<CheckBox>()) checkBox.Foreground = Foreground;
         panel.Children.Add(save); Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
 }

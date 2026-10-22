@@ -18,12 +18,46 @@
     WindowBackdropType="Mica">
 
     <ui:FluentWindow.Resources>
+        <!-- The vertical rail keeps each flyout's existing command and keyboard behavior. -->
+        <ControlTemplate x:Key="VerticalToolbarDropDownTemplate" TargetType="{x:Type ui:DropDownButton}">
+            <Border x:Name="ContentBorder" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}" Padding="0,2">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ContentPresenter x:Name="ControlIcon" Content="{TemplateBinding Icon}"
+                                      HorizontalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    <ContentPresenter x:Name="ControlContent" Content="{TemplateBinding Content}"
+                                      HorizontalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"
+                                      TextElement.FontSize="{TemplateBinding FontSize}"/>
+                    <ui:SymbolIcon Symbol="ChevronDown16" FontSize="8" Margin="0,2,0,0"
+                                   HorizontalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+                </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="ContentBorder" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="ContentBorder" Property="Opacity" Value="0.45"/>
+                </Trigger>
+                <Trigger Property="Icon" Value="{x:Null}">
+                    <Setter TargetName="ControlIcon" Property="Visibility" Value="Collapsed"/>
+                </Trigger>
+                <Trigger Property="Content" Value="{x:Null}">
+                    <Setter TargetName="ControlContent" Property="Visibility" Value="Collapsed"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
     </ui:FluentWindow.Resources>
 
     <DockPanel x:Name="ConsoleLayout" LastChildFill="True" Background="Transparent">
         <!-- 全屏时，Visibility 会变为 Collapsed，释放顶部 42 像素空间 -->
         <ui:TitleBar x:Name="TopTitleBar"
             DockPanel.Dock="Top" 
+            ButtonsForeground="{DynamicResource TextFillColorPrimaryBrush}"
             Height="42" 
             Padding="0"
             Visibility="{Binding IsFullScreen, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}">
@@ -49,9 +83,9 @@
                                ToolTip="{x:Static properties:Resources.ConsoleWindow_StartVm}"
                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
 
-                            <StackPanel Orientation="Horizontal"
+                            <StackPanel x:Name="RunningPowerButtons" Orientation="Horizontal"
                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
-                                <ui:Button Icon="{ui:SymbolIcon Symbol=Power24}"
+                                <ui:Button x:Name="ShutdownButton" Icon="{ui:SymbolIcon Symbol=Power24}"
                                    Appearance="Transparent" Background="Transparent"
                                    Width="36"
                                    Height="32"
@@ -206,8 +240,9 @@
         </ui:TitleBar>
 
         <!-- Window controls remain visible while the session toolbar can scroll in short windows. -->
-        <Border x:Name="SideBar" DockPanel.Dock="Left" Width="68" Visibility="Collapsed"
+        <Border x:Name="SideBar" DockPanel.Dock="Left" Width="44" Visibility="Collapsed"
                 Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+                TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                 BorderBrush="{ui:ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
             <DockPanel LastChildFill="True">
                 <Border x:Name="ToolbarDragHandle" DockPanel.Dock="Top" Height="20" Margin="7,4,7,0"

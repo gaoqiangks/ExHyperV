@@ -17,10 +17,16 @@ internal sealed class AutoConnectOptions
     public bool RedirectDrives { get; set; } = true;
     public bool DefaultVmManagementPage { get; set; } = true;
     public string ConsoleToolbarPosition { get; set; } = "Left";
+    // Empty follows the application theme; custom colors are opaque #RRGGBB values.
+    public string ConsoleToolbarBackground { get; set; } = "";
+    public ConsoleToolbarNameOptions ConsoleToolbarName { get; set; } = new();
+    internal static event Action? Saved;
     public string VmName { get; set; } = "";
     public string WindowMode { get; set; } = "Maximized";
     public bool CloseMainAfterConnect { get; set; } = true;
     public bool PasswordlessAutoLogin { get; set; }
+    // Null preserves the old global preference until individual VM choices are saved.
+    public Dictionary<string, bool>? PasswordlessAutoLoginByVm { get; set; }
     // Null denotes legacy settings; an explicit empty list disables all startup connections.
     public List<StartupVmOption>? VirtualMachines { get; set; }
     public static string ConfigPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ExHyperV", "AutoConnect.json");
@@ -44,7 +50,37 @@ internal sealed class AutoConnectOptions
             && legacyNode is JsonValue legacyValue
             && legacyValue.TryGetValue<bool>(out bool onLeft)) position = onLeft ? "Left" : "Top";
         root[nameof(ConsoleToolbarPosition)] = position;
+        string background = "";
+        if (root[nameof(ConsoleToolbarBackground)] is JsonValue backgroundValue
+            && backgroundValue.TryGetValue<string>(out var savedBackground))
+            TryNormalizeToolbarBackground(savedBackground, out background);
+        root[nameof(ConsoleToolbarBackground)] = background;
+        root[nameof(ConsoleToolbarName)] = JsonSerializer.SerializeToNode(
+            ConsoleToolbarNameOptions.Parse(root[nameof(ConsoleToolbarName)]));
+        if (root[nameof(PasswordlessAutoLoginByVm)] is { } loginNode)
+        {
+            var logins = new JsonObject();
+            if (loginNode is JsonObject entries)
+                foreach (var entry in entries)
+                    if (Guid.TryParse(entry.Key, out var vmId) && entry.Value is JsonValue value
+                        && value.TryGetValue<bool>(out bool enabled)) logins[vmId.ToString("D")] = enabled;
+            root[nameof(PasswordlessAutoLoginByVm)] = logins;
+        }
         return root.Deserialize<AutoConnectOptions>() ?? new();
+    }
+    internal bool IsPasswordlessLoginSelected(string vmId) => PasswordlessAutoLoginByVm is null
+        ? PasswordlessAutoLogin
+        : Guid.TryParse(vmId, out var id) && PasswordlessAutoLoginByVm.TryGetValue(id.ToString("D"), out bool enabled) && enabled;
+    internal bool IsPasswordlessLoginEnabled(string vmId) => PasswordlessAutoLogin && IsPasswordlessLoginSelected(vmId);
+    internal static bool TryNormalizeToolbarBackground(string? value, out string normalized)
+    {
+        normalized = "";
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        string hex = value.Trim();
+        if (hex.StartsWith('#')) hex = hex[1..];
+        if (hex.Length != 6 || !hex.All(char.IsAsciiHexDigit)) return false;
+        normalized = "#" + hex.ToUpperInvariant();
+        return true;
     }
     private static bool IsValidToolbarPosition(string? position) => position is "Top" or "Left" or "Right" or "Bottom";
     public List<StartupVmOption> StartupTargets()
@@ -70,10 +106,16 @@ internal sealed class AutoConnectOptions
     {
         if (WindowMode is not ("Normal" or "Maximized" or "Minimized" or "FullScreen")) throw new ArgumentException("窗口状态无效。");
         if (!IsValidToolbarPosition(ConsoleToolbarPosition)) throw new ArgumentException("控制栏位置无效。");
+        if (!TryNormalizeToolbarBackground(ConsoleToolbarBackground, out string background))
+            throw new ArgumentException("控制栏背景色无效，请输入 #RRGGBB 格式的颜色，例如 #202020。");
+        ConsoleToolbarBackground = background;
+        ConsoleToolbarName ??= new();
+        if (!ConsoleToolbarName.TryValidate(out string nameError)) throw new ArgumentException(nameError);
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         string temp = ConfigPath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temp, ConfigPath, true);
+        Saved?.Invoke();
     }
 }
 internal static class AutoConnectLog
