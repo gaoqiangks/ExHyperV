@@ -75,8 +75,7 @@ internal static class AutoConnectStartup
         void CloseManagerIfReady()
         {
             if (!finishedStarting || !connected || failed || !options.CloseMainAfterConnect || !owner.IsVisible || !consoles.Any(c => c.IsVisible)) return;
-            // Multiple checked VMs must stay alive when any individual console is closed.
-            System.Windows.Application.Current.ShutdownMode = ShutdownMode.OnLastWindowClose;
+            // Keep the main-window reference on a visible console after closing the manager.
             System.Windows.Application.Current.MainWindow = consoles.First(c => c.IsVisible);
             owner.Close();
             Log("Main window closed; consoles remain open.");
