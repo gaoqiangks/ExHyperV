@@ -33,7 +33,7 @@ internal static class PasswordlessLogin
             {
                 try
                 {
-                    if (token.IsCancellationRequested || loggedIn || EnhancedSessionCredentials.IsConfigured(vmName)) return;
+                    if (token.IsCancellationRequested || loggedIn || EnhancedSessionCredentials.IsConfigured(vmId)) return;
                     // Resolve the saved VM ID, so renaming a guest does not change its login choice.
                     if (!AutoConnectOptions.Load().IsPasswordlessLoginEnabled(vmId)) return;
                     await Task.Delay(2500, token);

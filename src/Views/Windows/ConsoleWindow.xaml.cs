@@ -185,7 +185,7 @@ namespace ExHyperV.Views
                 if (_enhancedConnecting)   // 增强会话没连上就断 → 回退基本会话（并把顶部开关切回）
                 {
                     _enhancedConnecting = false;
-                    if (EnhancedSessionCredentials.IsConfigured(_vm.VmName))
+                    if (EnhancedSessionCredentials.IsConfigured(_vm.VmId))
                     {
                         AutoConnectLog.Write("Guest enhanced session unavailable; waiting for guest readiness: " + _vm.VmName);
                         return;
@@ -299,7 +299,7 @@ namespace ExHyperV.Views
                 return;
             // Windows' sign-in screen can reject display-control requests. The login event
             // starts a fresh negotiation; Linux guests can already negotiate after Connected.
-            if (!_enhancedLoginCompleted && !EnhancedSessionCredentials.IsConfigured(_vm.VmName)) return;
+            if (!_enhancedLoginCompleted && !EnhancedSessionCredentials.IsConfigured(_vm.VmId)) return;
             if (!TryGetDisplayTarget(out int width, out int height)) return;
             if (!_forceDisplayResize && _confirmedRemoteWidth == width && _confirmedRemoteHeight == height)
             {

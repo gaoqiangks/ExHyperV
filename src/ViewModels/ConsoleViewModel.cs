@@ -47,13 +47,13 @@ namespace ExHyperV.ViewModels
             VmId = vmId;
             VmName = vmName;
             _desktopScalePercent = EnhancedSessionDisplayOptions.Load().GetPercent(vmId);
-            _supportsDesktopScale = !EnhancedSessionCredentials.IsConfigured(vmName);
+            _supportsDesktopScale = !EnhancedSessionCredentials.IsConfigured(vmId);
             // 打开控制台时优先用配置里保存的缩放档（语言中立："auto"→当前语言的适应窗口，百分比直用）；无/无效则保持默认 100%。
             var savedZoom = SettingsService.GetDefaultZoom();
             if (savedZoom == ZoomAutoToken) SelectedZoom = Properties.Resources.ConsoleWindow_ZoomAuto;
             else if (!string.IsNullOrEmpty(savedZoom) && ZoomOptions.Contains(savedZoom)) SelectedZoom = savedZoom;
             // 使用保存的分辨率直接建立增强会话；无保存值时先由基本会话取得分辨率。
-            _preferEnhanced = EnhancedSessionCredentials.IsConfigured(vmName) || AutoConnectOptions.Load().PreferEnhancedSession || SettingsService.GetDefaultConnectionMode() == ModeEnhancedToken;
+            _preferEnhanced = EnhancedSessionCredentials.IsConfigured(vmId) || AutoConnectOptions.Load().PreferEnhancedSession || SettingsService.GetDefaultConnectionMode() == ModeEnhancedToken;
             var savedResolution = SettingsService.GetDefaultConsoleResolution();
             InitialEnhancedWidth = savedResolution?.Width ?? DefaultEnhancedWidth;
             InitialEnhancedHeight = savedResolution?.Height ?? DefaultEnhancedHeight;
@@ -87,9 +87,10 @@ namespace ExHyperV.ViewModels
             try
             {
                 var vms = await _queryService.GetVmListAsync();
-                var currentVm = vms.FirstOrDefault(v =>
-                    v.Id.ToString().Equals(VmId, StringComparison.OrdinalIgnoreCase) ||
-                    v.Name.Equals(VmName, StringComparison.OrdinalIgnoreCase));
+                // Names can change or be reused by another VM; the console follows its original ID.
+                var currentVm = Guid.TryParse(VmId, out var id)
+                    ? vms.FirstOrDefault(v => v.Id == id)
+                    : null;
 
                 if (currentVm != null)
                 {

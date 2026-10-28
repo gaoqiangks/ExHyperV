@@ -33,7 +33,7 @@ internal sealed class EnhancedSessionDisplaySettingsWindow : Window
         machines.SelectionChanged += (_, _) =>
         {
             if (machines.SelectedItem is not VmInstance vm) return;
-            bool supported = !EnhancedSessionCredentials.IsConfigured(vm.Name);
+            bool supported = !EnhancedSessionCredentials.IsConfigured(vm.Id.ToString());
             int current = EnhancedSessionDisplayOptions.Load().GetPercent(vm.Id.ToString());
             var choices = EnhancedSessionDisplayOptions.Presets.Select(p => new DesktopScaleOption(p)).ToList();
             if (!choices.Any(p => p.Percent == current)) choices.Add(new(current));
@@ -60,7 +60,7 @@ internal sealed class EnhancedSessionDisplaySettingsWindow : Window
             {
                 var vms = await new VmQueryService().GetVmListAsync();
                 machines.ItemsSource = vms;
-                machines.SelectedItem = vms.FirstOrDefault(v => !EnhancedSessionCredentials.IsConfigured(v.Name)) ?? vms.FirstOrDefault();
+                machines.SelectedItem = vms.FirstOrDefault(v => !EnhancedSessionCredentials.IsConfigured(v.Id.ToString())) ?? vms.FirstOrDefault();
             }
             catch (Exception ex) { hint.Text = ex.Message; }
         };

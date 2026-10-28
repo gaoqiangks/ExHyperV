@@ -9,34 +9,55 @@ namespace ExHyperV.Services;
 // Credentials are scoped to a VM ID and encrypted for the current Windows user.
 internal static class EnhancedSessionCredentials
 {
+    private static EnhancedSessionCredentialStore Store => new(Path.Combine(Environment.GetFolderPath(
+        Environment.SpecialFolder.LocalApplicationData), "ExHyperV", "EnhancedSessionCredentials.json"));
+
+    internal static bool IsConfigured(string vmId) => Store.IsConfigured(vmId);
+
+    internal static void Apply(RdpConnectionSettings settings, string vmId, string vmName) =>
+        Store.Apply(settings, vmId, vmName);
+}
+
+// An explicit store path keeps credential tests isolated from the user's saved passwords.
+internal sealed class EnhancedSessionCredentialStore(string filePath)
+{
     private sealed class Entry
     {
+        // Retained for compatibility with existing files; names are display metadata only.
         public string VmName { get; set; } = "";
         public string Username { get; set; } = "";
         public string ProtectedPassword { get; set; } = "";
         public bool Enabled { get; set; }
     }
 
-    private static string FilePath => Path.Combine(Environment.GetFolderPath(
-        Environment.SpecialFolder.LocalApplicationData), "ExHyperV", "EnhancedSessionCredentials.json");
-
-    private static Dictionary<string, Entry> Read() => File.Exists(FilePath)
-        ? JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(FilePath)) ?? new()
+    private Dictionary<string, Entry> Read() => File.Exists(filePath)
+        ? JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(filePath)) ?? new()
         : new();
 
-    internal static bool IsConfigured(string vmName)
+    private bool TryGetConfiguredEntry(string vmId, out string id, out Entry entry)
     {
-        try { return Read().Values.Any(e => e.Enabled && e.VmName == vmName); }
+        id = "";
+        entry = null!;
+        if (!Guid.TryParse(vmId, out var guid) || guid == Guid.Empty) return false;
+        id = guid.ToString("D");
+        if (!Read().TryGetValue(id, out var candidate) || candidate == null || !candidate.Enabled ||
+            string.IsNullOrWhiteSpace(candidate.Username) || string.IsNullOrWhiteSpace(candidate.ProtectedPassword))
+            return false;
+        entry = candidate;
+        return true;
+    }
+
+    internal bool IsConfigured(string vmId)
+    {
+        try { return TryGetConfiguredEntry(vmId, out _, out _); }
         catch { return false; }
     }
 
-    internal static void Apply(RdpConnectionSettings settings, string vmId, string vmName)
+    internal void Apply(RdpConnectionSettings settings, string vmId, string vmName)
     {
         try
         {
-            string id = Guid.Parse(vmId).ToString("D");
-            if (!Read().TryGetValue(id, out var entry) || !entry.Enabled ||
-                entry.VmName != vmName || string.IsNullOrWhiteSpace(entry.Username)) return;
+            if (!TryGetConfiguredEntry(vmId, out string id, out var entry)) return;
             byte[] encrypted = Convert.FromBase64String(entry.ProtectedPassword);
             byte[] plain = Unprotect(encrypted, Encoding.UTF8.GetBytes(id));
             try
