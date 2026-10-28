@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:services="clr-namespace:ExHyperV.Services"
              xmlns:properties="clr-namespace:ExHyperV.Properties">
     <UserControl.Resources>
         <Style x:Key="ManagementSection" TargetType="Border">
@@ -123,6 +124,7 @@
                         <StackPanel>
                             <TextBlock Text="{x:Static properties:VmManagementText.AutomaticStart}" Style="{StaticResource ManagementHeading}"/>
                             <TextBlock Text="{x:Static properties:VmManagementText.AutomaticStartHint}" Style="{StaticResource ManagementHint}"/>
+                            <TextBlock Text="{x:Static services:HostStartupPolicyText.OverrideHint}" Style="{StaticResource ManagementHint}"/>
                             <ComboBox ItemsSource="{Binding ManagementStartActions}" DisplayMemberPath="Label" SelectedValuePath="Value"
                                       SelectedValue="{Binding ManagementStartAction, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
                             <TextBlock Text="{x:Static properties:VmManagementText.StartDelay}" Margin="0,12,0,6"/>

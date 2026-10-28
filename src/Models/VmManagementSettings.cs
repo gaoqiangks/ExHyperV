@@ -6,8 +6,8 @@ public sealed class VmManagementSettings
 {
     public string SettingsPath { get; init; } = "";
     public string Name { get; init; } = "";
-    public ushort AutomaticStartAction { get; init; }
-    public int AutomaticStartDelaySeconds { get; init; }
+    public ushort AutomaticStartAction { get; internal set; }
+    public int AutomaticStartDelaySeconds { get; internal set; }
     public ushort AutomaticStopAction { get; init; }
     public bool CheckpointTypeAvailable { get; init; }
     public ushort CheckpointType { get; init; }

@@ -285,6 +285,9 @@ public partial class VirtualMachinesPageViewModel
             ShowSuccess(sessions.Length == 1
                 ? string.Format(Resources.VmImport_Success, sessions[0].Preview.Name)
                 : $"已导入 {sessions.Length} 台虚拟机。");
+            var startupWarnings = sessions.Where(session => !string.IsNullOrEmpty(session.StartupPolicyWarning))
+                .Select(session => session.Preview.Name + ": " + session.StartupPolicyWarning).ToArray();
+            if (startupWarnings.Length > 0) ShowError(string.Join(Environment.NewLine, startupWarnings));
         }
         finally
         {

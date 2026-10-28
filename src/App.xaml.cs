@@ -66,6 +66,7 @@ public partial class App
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        ExHyperV.Services.HostStartupPolicyService.StopMonitoring();
         try
         {
             // The dispatcher is stopping; finish USB cleanup on a worker before

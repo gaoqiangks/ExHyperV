@@ -16,6 +16,15 @@ namespace ExHyperV.ViewModels
         [ObservableProperty] private string _selectedLanguage = string.Empty;
         [ObservableProperty] private bool _isPerformanceMode;
 
+        [ObservableProperty] private bool _allowVmHostBootStartup = true;
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanEditHostStartupPolicy))]
+        private bool _isHostStartupPolicyBusy = true;
+        [ObservableProperty] private string _hostStartupPolicyStatus = HostStartupPolicyText.Loading;
+        private bool _hostStartupPolicyLoaded;
+        private bool _updatingHostStartupPolicy;
+        public bool CanEditHostStartupPolicy => _hostStartupPolicyLoaded && !IsHostStartupPolicyBusy;
+
         [ObservableProperty] private string _updateStatusText = string.Empty;
         [ObservableProperty] private bool _isCheckingForUpdate;
         [ObservableProperty] private string _updateActionIcon = string.Empty;
@@ -99,6 +108,109 @@ namespace ExHyperV.ViewModels
 
             UpdateActionCommand = CheckForUpdateCommand;
             _ = CheckForUpdateCommand.ExecuteAsync(null);
+            _ = LoadHostStartupPolicyAsync();
+        }
+
+        private async Task LoadHostStartupPolicyAsync()
+        {
+            IsHostStartupPolicyBusy = true;
+            HostStartupPolicyStatus = HostStartupPolicyText.Loading;
+            try
+            {
+                bool allowed = await HostStartupPolicyService.GetAllowedAsync();
+                SetDisplayedHostStartupPolicy(allowed);
+                if (!allowed)
+                {
+                    // Persisted intent alone is not proof that a previous partial
+                    // apply succeeded. Verify suppression before showing success.
+                    await HostStartupPolicyService.ReconcileAsync();
+                    SetDisplayedHostStartupPolicy(await HostStartupPolicyService.GetAllowedAsync());
+                }
+                HostStartupPolicyStatus = AllowVmHostBootStartup
+                    ? HostStartupPolicyText.Allowed : HostStartupPolicyText.Blocked;
+            }
+            catch (Exception ex)
+            {
+                await ShowHostStartupPolicyFailureAsync(ex);
+            }
+            finally { IsHostStartupPolicyBusy = false; }
+        }
+
+        // Cached settings pages need a fresh read when navigation shows them again.
+        // An in-flight load/save already uses the current machine-wide policy.
+        internal Task RefreshHostStartupPolicyAsync() => IsHostStartupPolicyBusy
+            ? Task.CompletedTask : LoadHostStartupPolicyAsync();
+
+        private void SetDisplayedHostStartupPolicy(bool allowed)
+        {
+            _updatingHostStartupPolicy = true;
+            try
+            {
+                AllowVmHostBootStartup = allowed;
+                _hostStartupPolicyLoaded = true;
+                OnPropertyChanged(nameof(CanEditHostStartupPolicy));
+            }
+            finally { _updatingHostStartupPolicy = false; }
+        }
+
+        partial void OnAllowVmHostBootStartupChanged(bool value)
+        {
+            if (_isInitializing || _updatingHostStartupPolicy || !CanEditHostStartupPolicy) return;
+            _ = ApplyHostStartupPolicyCommand.ExecuteAsync(null);
+        }
+
+        [RelayCommand]
+        private async Task ApplyHostStartupPolicyAsync()
+        {
+            if (IsHostStartupPolicyBusy) return;
+            await SaveHostStartupPolicyAsync(AllowVmHostBootStartup);
+        }
+
+        [RelayCommand]
+        private async Task ReapplyHostStartupPolicyAsync()
+        {
+            if (IsHostStartupPolicyBusy) return;
+            IsHostStartupPolicyBusy = true;
+            try
+            {
+                bool allowed = await HostStartupPolicyService.GetAllowedAsync();
+                SetDisplayedHostStartupPolicy(allowed);
+                await ApplyHostStartupPolicyCoreAsync(allowed);
+            }
+            catch (Exception ex)
+            {
+                await ShowHostStartupPolicyFailureAsync(ex);
+            }
+            finally { IsHostStartupPolicyBusy = false; }
+        }
+
+        private async Task SaveHostStartupPolicyAsync(bool allowed)
+        {
+            IsHostStartupPolicyBusy = true;
+            try { await ApplyHostStartupPolicyCoreAsync(allowed); }
+            catch (Exception ex) { await ShowHostStartupPolicyFailureAsync(ex); }
+            finally { IsHostStartupPolicyBusy = false; }
+        }
+
+        private async Task ApplyHostStartupPolicyCoreAsync(bool allowed)
+        {
+            HostStartupPolicyStatus = HostStartupPolicyText.Applying;
+            await HostStartupPolicyService.SetAllowedAsync(allowed);
+            SetDisplayedHostStartupPolicy(allowed);
+            HostStartupPolicyStatus = allowed ? HostStartupPolicyText.Allowed : HostStartupPolicyText.Blocked;
+        }
+
+        private async Task ShowHostStartupPolicyFailureAsync(Exception error)
+        {
+            // A failed write may still have persisted a block and recovery snapshot.
+            // Show the persisted switch state, but retain the error until a successful retry.
+            try { SetDisplayedHostStartupPolicy(await HostStartupPolicyService.GetAllowedAsync()); }
+            catch
+            {
+                _hostStartupPolicyLoaded = false;
+                OnPropertyChanged(nameof(CanEditHostStartupPolicy));
+            }
+            HostStartupPolicyStatus = HostStartupPolicyText.ApplyFailed + " " + error.Message;
         }
 
 

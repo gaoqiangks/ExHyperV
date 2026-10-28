@@ -44,20 +44,31 @@ public static class VmManagementService
                 : null);
         if (!components.Success) return ApiResponse<VmManagementSettings>.Fail(components.Error);
         settings.Data.IntegrationServices = components.Data!.OfType<VmIntegrationServiceSetting>().ToList();
+        try
+        {
+            var preference = await HostStartupPolicyService.GetPreferenceAsync(vmId);
+            if (preference != null)
+            {
+                settings.Data.AutomaticStartAction = preference.Action;
+                settings.Data.AutomaticStartDelaySeconds = preference.DelaySeconds;
+            }
+        }
+        catch (Exception ex) { return ApiResponse<VmManagementSettings>.Fail(ex.Message); }
         return settings;
     }
 
     private static int ReadDelay(string? value) => string.IsNullOrEmpty(value) ? 0
         : checked((int)ManagementDateTimeConverter.ToTimeSpan(value).TotalSeconds);
 
-    public static Task<ApiResponse> SetAutomaticStartAsync(Guid vmId, ushort action, int delaySeconds)
+    public static async Task<ApiResponse> SetAutomaticStartAsync(Guid vmId, ushort action, int delaySeconds)
     {
-        if (action is not (2 or 3 or 4) || delaySeconds < 0) return Task.FromResult(ApiResponse.Fail(VmManagementText.InvalidStart));
-        return WmiApi.WithObjectAsync(SettingsQuery(vmId), obj =>
+        if (action is not (2 or 3 or 4) || delaySeconds < 0) return ApiResponse.Fail(VmManagementText.InvalidStart);
+        try
         {
-            obj["AutomaticStartupAction"] = action;
-            obj["AutomaticStartupActionDelay"] = ManagementDateTimeConverter.ToDmtfTimeInterval(TimeSpan.FromSeconds(delaySeconds));
-        });
+            await HostStartupPolicyService.SetPreferenceAsync(new(vmId, action, delaySeconds));
+            return ApiResponse.Ok();
+        }
+        catch (Exception ex) { return ApiResponse.Fail(ex.Message); }
     }
 
     public static async Task<ApiResponse> SetAutomaticStopAsync(Guid vmId, ushort action)

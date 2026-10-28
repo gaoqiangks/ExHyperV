@@ -9,6 +9,7 @@
     xmlns:converters="clr-namespace:ExHyperV.Converters"
     xmlns:vm="clr-namespace:ExHyperV.ViewModels"
     xmlns:models="clr-namespace:ExHyperV.Models"
+    xmlns:services="clr-namespace:ExHyperV.Services"
     mc:Ignorable="d"
     d:DataContext="{d:DesignInstance Type=vm:SettingsPageViewModel, IsDesignTimeCreatable=True}"
     Title="Setting"
@@ -27,6 +28,28 @@
             FontTypography="BodyStrong"
             Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
             Text="{x:Static properties:Resources.Settings}" />
+
+        <ui:CardControl Margin="0,0,0,12">
+            <ui:CardControl.Icon>
+                <ui:FontIcon FontFamily="{DynamicResource SegoeFluentIcons}" Glyph="&#xE7E8;" />
+            </ui:CardControl.Icon>
+            <ui:CardControl.Header>
+                <StackPanel Margin="0,0,20,0">
+                    <ui:TextBlock FontTypography="Body" TextWrapping="Wrap" Text="{x:Static services:HostStartupPolicyText.Title}" />
+                    <ui:TextBlock Margin="0,4,0,0" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                                  TextWrapping="Wrap" Text="{x:Static services:HostStartupPolicyText.Hint}" />
+                    <ui:TextBlock Margin="0,4,0,0" Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                                  TextWrapping="Wrap" Text="{x:Static services:HostStartupPolicyText.ExternalChanges}" />
+                    <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding HostStartupPolicyStatus}" />
+                    <Button Margin="0,8,0,0" HorizontalAlignment="Left"
+                            Content="{x:Static services:HostStartupPolicyText.Reapply}"
+                            Command="{Binding ReapplyHostStartupPolicyCommand}"
+                            IsEnabled="{Binding IsHostStartupPolicyBusy, Converter={StaticResource InverseBooleanConverter}}" />
+                </StackPanel>
+            </ui:CardControl.Header>
+            <ui:ToggleSwitch IsChecked="{Binding AllowVmHostBootStartup, Mode=TwoWay}"
+                             IsEnabled="{Binding CanEditHostStartupPolicy}" />
+        </ui:CardControl>
 
         <ui:CardControl Margin="0,0,0,12">
             <ui:CardControl.Icon>

@@ -38,6 +38,15 @@ internal static class AutoConnectStartup
 
     internal static async Task RunAsync(MainWindow owner)
     {
+        // Apply durable host policy before any automatic connection can start a VM.
+        try { await HostStartupPolicyService.InitializeAsync(); }
+        catch (Exception ex)
+        {
+            owner.ShowStartupPage();
+            System.Windows.MessageBox.Show(owner, HostStartupPolicyText.ApplyFailed + "\n" + ex.Message,
+                HostStartupPolicyText.Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         var args = Environment.GetCommandLineArgs();
         int flag = Array.IndexOf(args, "--auto-connect");
         if (args.Contains("--display-settings")) { new EnhancedSessionDisplaySettingsWindow { Owner = owner }.Show(); return; }
@@ -90,6 +99,7 @@ internal static class AutoConnectStartup
                 var timeout = Stopwatch.StartNew();
                 VmStatus? status = null;
                 bool startRequested = false;
+                bool skippedByHostPolicy = false;
                 double? runningSince = null;
                 while (timeout.Elapsed < TimeSpan.FromMinutes(5))
                 {
@@ -99,6 +109,12 @@ internal static class AutoConnectStartup
                         name = status.Name;
                         if ((status.State is 3 or 6 or 32769 or 32779 or 32783) && !startRequested)
                         {
+                            if (!await HostStartupPolicyService.GetAllowedAsync())
+                            {
+                                skippedByHostPolicy = true;
+                                Log("Host startup policy blocks automatic start; skipping the stopped/saved VM.");
+                                break;
+                            }
                             startRequested = true;
                             Log("VM is off/saved; requesting a normal start.");
                             var result = await VmPowerService.ExecuteControlActionAsync(name, "Start");
@@ -116,6 +132,7 @@ internal static class AutoConnectStartup
                     }
                     await Task.Delay(2000);
                 }
+                if (skippedByHostPolicy) continue;
                 if (status?.State != 2)
                     throw new TimeoutException($"等待 {name} 启动超过 5 分钟。请检查 Hyper-V 管理器。虚拟机不会被强制关机或重置。");
                 Log($"VM running: {status.Id}; enhanced session state={status.Enhanced}.");
@@ -153,7 +170,8 @@ internal static class AutoConnectStartup
         }
         finishedStarting = true;
         owner.Title = "ExHyperV";
-        if (failed || !options.CloseMainAfterConnect) owner.WindowState = WindowState.Normal;
+        if (failed || !options.CloseMainAfterConnect || consoles.Count == 0) owner.WindowState = WindowState.Normal;
+        if (consoles.Count == 0) owner.ShowStartupPage();
         CloseManagerIfReady();
     }
 }

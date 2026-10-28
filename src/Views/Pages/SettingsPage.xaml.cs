@@ -10,6 +10,7 @@ namespace ExHyperV.Views
         {
             InitializeComponent();
             DataContext = new SettingsPageViewModel();
+            Loaded += async (_, _) => await ((SettingsPageViewModel)DataContext).RefreshHostStartupPolicyAsync();
         }
     }
 }

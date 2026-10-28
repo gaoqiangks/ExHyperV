@@ -36,6 +36,7 @@ public sealed class VmImportSession : IAsyncDisposable
     internal string? DiskStagingRoot { get; set; }
     public bool ArchiveFullyExtracted { get; internal set; }
     public bool IsRealized { get; internal set; }
+    public string StartupPolicyWarning { get; internal set; } = string.Empty;
     internal bool OwnsTemporaryRoot { get; set; }
     internal bool GenerateNewGuid { get; set; }
 
@@ -388,6 +389,13 @@ public static class VmImportService
                 catch { }
             }
 
+            try { await HostStartupPolicyService.ReconcileVmAsync(realizedGuid); }
+            catch (Exception ex)
+            {
+                // Realize is already committed. Report the policy failure as a
+                // warning rather than inviting the user to import a second copy.
+                session.StartupPolicyWarning = HostStartupPolicyText.ImportWarning + " " + ex.Message;
+            }
             return ApiResponse<Guid>.Ok(realizedGuid);
         }
         catch (OperationCanceledException ex)
