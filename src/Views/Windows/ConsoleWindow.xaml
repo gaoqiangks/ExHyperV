@@ -132,6 +132,17 @@
                             </StackPanel>
                         </Grid>
 
+                        <ui:Button x:Name="SaveStateButton" Icon="{ui:SymbolIcon Symbol=Save24}"
+                                   Appearance="Transparent" Background="Transparent"
+                                   Width="38"
+                                   Height="32"
+                                   Padding="0"
+                                   Margin="8,0,0,0"
+                                   Command="{Binding SaveVmCommand}"
+                                   ToolTip="{x:Static properties:Resources.ConsoleWindow_SaveState}"
+                                   AutomationProperties.Name="{x:Static properties:Resources.ConsoleWindow_SaveState}"
+                                   Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"/>
+
                         <ui:DropDownButton x:Name="ResolutionButton" Content="{Binding SelectedResolution}"
                                    Icon="{ui:SymbolIcon Symbol=Desktop24}" 
                                    Appearance="Transparent" Background="Transparent" 
